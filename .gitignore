@@ -1,0 +1,50 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.swp
+*~
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+dist-ssr/
+build/
+out/
+*.local
+
+# TypeScript
+*.tsbuildinfo
+
+# Bundler / tooling caches
+.cache/
+.vite/
+.parcel-cache/
+.eslintcache
+.stylelintcache
+
+# Tests / coverage
+coverage/
+playwright-report/
+test-results/
