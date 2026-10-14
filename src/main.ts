@@ -27,6 +27,13 @@ const CLUBS: Club[] = [
  * growing. A full-power driver aimed 12° right draws back to about the target line.
  */
 const MAX_PATH_ANGLE = deg(48);
+/** Lowest launch angle a downhill lie can reduce a club to. */
+const MIN_LOFT = deg(4);
+/**
+ * Degrees of swing path per degree of sidehill slope. Ground rising to the right puts the
+ * ball above the feet, which closes the face: a draw bias. Ball below the feet fades.
+ */
+const SIDEHILL_PATH_BIAS = 1.5;
 const PUTTER = CLUBS.length - 1;
 const LIE_NAMES: Record<Surface, string> = { tee: 'Tee', fairway: 'Fairway', green: 'Green', rough: 'Rough' };
 const HOLES_PER_ROUND = 9;
@@ -39,6 +46,7 @@ const hud = {
   strokes: $('strokes'),
   club: $('club'),
   lie: $('lie'),
+  slope: $('slope'),
   round: $('round'),
   windArrow: document.getElementById('wind-arrow') as unknown as SVGPathElement,
   windSpeed: $('wind-speed'),
@@ -241,6 +249,28 @@ function onBallStopped(): void {
   rig.yawGoal = yawTowardHole();
 }
 
+const _lieNormal = new THREE.Vector3();
+
+/** Slope of the ground under the ball (radians): `up` along `dir`, `side` rising to the right of it. */
+function lieAngles(dir: THREE.Vector3): { up: number; side: number } {
+  const n = level.normalAt(ball.position.x, ball.position.z, _lieNormal);
+  const gx = -n.x / n.y;
+  const gz = -n.z / n.y;
+  return { up: Math.atan(gx * dir.x + gz * dir.z), side: Math.atan(gx * -dir.z + gz * dir.x) };
+}
+
+/** Launch angle and effective swing path for the current aim, including the lie's slope. */
+function shotParams(): { loft: number; path: number } {
+  const club = CLUBS[clubIndex];
+  if (clubIndex === PUTTER) return { loft: club.loft, path: 0 };
+  const lie = lieAngles(aim.dir);
+  return {
+    // Uphill lies add loft; downhill lies take it away.
+    loft: Math.max(MIN_LOFT, club.loft + lie.up),
+    path: THREE.MathUtils.clamp(aim.path + lie.side * SIDEHILL_PATH_BIAS, -MAX_PATH_ANGLE, MAX_PATH_ANGLE),
+  };
+}
+
 function shoot(): void {
   const club = CLUBS[clubIndex];
   lastRest.copy(ball.position);
@@ -248,9 +278,9 @@ function shoot(): void {
   // A putt leaves the face already rolling (topspin matching its speed) so it doesn't skid.
   const backspin = clubIndex === PUTTER ? -speed / BALL_RADIUS : club.spin * aim.power;
   // An in-to-out path (aimed right of the target line) draws; out-to-in fades.
-  const pathDegrees = (THREE.MathUtils.clamp(aim.path, -MAX_PATH_ANGLE, MAX_PATH_ANGLE) * 180) / Math.PI;
-  const sidespin = club.sideSpin * aim.power * pathDegrees;
-  ball.strike(aim.dir, speed, club.loft, backspin, sidespin);
+  const { loft, path } = shotParams();
+  const sidespin = club.sideSpin * aim.power * ((path * 180) / Math.PI);
+  ball.strike(aim.dir, speed, loft, backspin, sidespin);
   strokes++;
   state = 'flying';
 }
@@ -486,7 +516,7 @@ function updateAimVisuals(time: number): void {
   const club = CLUBS[clubIndex];
   const length = 0.6 + aim.power * 5;
   arrow.position.set(p.x, p.y + 0.05, p.z);
-  arrow.rotation.set(-club.loft, Math.atan2(aim.dir.x, aim.dir.z), 0, 'YXZ');
+  arrow.rotation.set(-shotParams().loft, Math.atan2(aim.dir.x, aim.dir.z), 0, 'YXZ');
   arrowShaft.scale.set(1, 1, length);
   arrowHead.position.set(0, 0, length);
   arrowMaterial.color.setHSL((1 - aim.power) * 0.33, 0.85, 0.55);
@@ -532,9 +562,10 @@ function updateWindIndicator(): void {
 }
 
 function shotShape(): string {
-  const amount = Math.abs(aim.path) / MAX_PATH_ANGLE;
+  const { path } = shotParams();
+  const amount = Math.abs(path) / MAX_PATH_ANGLE;
   if (amount < 0.06) return 'Straight';
-  const shape = aim.path > 0 ? 'Draw' : 'Fade';
+  const shape = path > 0 ? 'Draw' : 'Fade';
   // Sidespin stops growing past MAX_PATH_ANGLE.
   if (amount < 0.25) return `Slight ${shape.toLowerCase()}`;
   if (amount < 0.6) return shape;
@@ -550,6 +581,19 @@ function updateHud(): void {
   const totals = roundTotals();
   hud.round.textContent = card.length ? `${totals.strokes} (${formatToPar(totals.toPar)})` : '–';
   hud.lie.textContent = ball.sunk ? 'Cup' : ball.moving ? '–' : LIE_NAMES[level.surfaceAt(ball.position.x, ball.position.z)];
+  hud.slope.textContent = ball.sunk || ball.moving ? '–' : slopeLabel();
+}
+
+/** Describes the lie's slope along the aim (or, before aiming, the target line). */
+function slopeLabel(): string {
+  const dir = state === 'aiming' ? aim.dir : _v.set(-Math.sin(rig.yaw), 0, -Math.cos(rig.yaw));
+  const { up, side } = lieAngles(dir);
+  const upDeg = Math.round((up * 180) / Math.PI);
+  const sideDeg = Math.round((side * 180) / Math.PI);
+  const parts: string[] = [];
+  if (upDeg !== 0) parts.push(`${upDeg > 0 ? 'Up' : 'Down'} ${Math.abs(upDeg)}°`);
+  if (sideDeg !== 0) parts.push(`${sideDeg > 0 ? 'Above feet' : 'Below feet'} ${Math.abs(sideDeg)}°`);
+  return parts.length ? parts.join(' · ') : 'Flat';
 }
 
 let lastTime = performance.now();
