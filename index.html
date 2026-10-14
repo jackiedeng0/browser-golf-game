@@ -20,14 +20,28 @@
           <dt>Round</dt><dd id="round">–</dd>
         </dl>
       </div>
-      <button id="new-hole" type="button">New hole</button>
+      <div class="top-right">
+        <button id="new-hole" type="button">New hole</button>
+        <div class="panel" id="wind">
+          <svg id="wind-dial" viewBox="-30 -30 60 60" aria-hidden="true">
+            <circle class="dial" r="27" />
+            <path class="notch" d="M0 -27 L0 -21" />
+            <path id="wind-arrow" d="M0 -19 L8 -4 L2.8 -4 L2.8 17 L-2.8 17 L-2.8 -4 L-8 -4 Z" />
+          </svg>
+          <div>
+            <div class="wind-label">Wind</div>
+            <div id="wind-speed">–</div>
+            <div id="wind-relative"></div>
+          </div>
+        </div>
+      </div>
       <div id="power" hidden>
         <div id="power-fill"></div>
         <span id="power-label"></span>
       </div>
       <div id="toast"></div>
       <div id="hint">
-        Drag back from the ball and release to shoot · Drag elsewhere to look around · Scroll to zoom · C to change club
+        Drag back from the ball and release to shoot · Aim right of the target line to draw, left to fade · Drag elsewhere to look around · Scroll to zoom · C to change club
       </div>
     </div>
 

@@ -96,10 +96,60 @@ button:hover {
   filter: brightness(1.07);
 }
 
-#new-hole {
+.top-right {
   position: absolute;
   top: 16px;
   right: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+#wind {
+  position: static;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 10px 14px;
+}
+
+#wind-dial {
+  width: 56px;
+  height: 56px;
+  flex: none;
+}
+
+#wind-dial .dial {
+  fill: rgba(255, 255, 255, 0.08);
+  stroke: rgba(255, 255, 255, 0.35);
+  stroke-width: 1.5;
+}
+
+#wind-dial .notch {
+  stroke: var(--accent);
+  stroke-width: 2.5;
+}
+
+#wind-arrow {
+  fill: #9fe0ff;
+}
+
+.wind-label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+#wind-speed {
+  font-weight: 700;
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+}
+
+#wind-relative {
+  font-size: 12px;
+  color: var(--muted);
 }
 
 #power {

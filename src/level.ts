@@ -8,6 +8,7 @@ export const HOLE_RADIUS = 0.3;
 export const CUP_DEPTH = 0.4;
 export const PIN_RADIUS = 0.022;
 export const PIN_HEIGHT = 3.0;
+export const MAX_WIND = 9;
 
 export type Surface = 'tee' | 'fairway' | 'green' | 'rough';
 
@@ -23,8 +24,8 @@ export interface SurfaceProps {
 export const SURFACES: Record<Surface, SurfaceProps> = {
   tee: { restitution: 0.35, friction: 0.45, rolling: 0.1 },
   fairway: { restitution: 0.38, friction: 0.54, rolling: 0.12 },
-  green: { restitution: 0.3, friction: 0.5, rolling: 0.065 },
-  rough: { restitution: 0.22, friction: 0.78, rolling: 0.36 },
+  green: { restitution: 0.3, friction: 0.5, rolling: 0.08 },
+  rough: { restitution: 0.22, friction: 1.56, rolling: 0.72 },
 };
 
 const PATH_SAMPLES = 48;
@@ -68,6 +69,8 @@ export class Level {
   /** Straight-line tee-to-pin distance. */
   readonly distance: number;
   readonly par: number;
+  /** Constant wind velocity for this hole (m/s, horizontal). */
+  readonly wind: THREE.Vector3;
   readonly bounds: { minX: number; maxX: number; minZ: number; maxZ: number };
   readonly group = new THREE.Group();
 
@@ -128,7 +131,11 @@ export class Level {
     this.group.add(this.buildTerrain());
     this.group.add(this.buildCup());
     this.group.add(this.buildTeeMarkers());
-    this.flag = this.buildFlag(range(0, Math.PI * 2));
+    // Wind direction is uniform; speed is skewed toward lighter breezes.
+    const windAngle = range(0, Math.PI * 2);
+    const windSpeed = MAX_WIND * Math.pow(rand(), 1.5);
+    this.wind = new THREE.Vector3(Math.cos(windAngle) * windSpeed, 0, Math.sin(windAngle) * windSpeed);
+    this.flag = this.buildFlag();
     this.flagRest = Float32Array.from(this.flag.geometry.getAttribute('position').array);
   }
 
@@ -156,7 +163,10 @@ export class Level {
   }
 
   surfaceAt(x: number, z: number): Surface {
-    if (this.greenEdgeDistance(x, z) < this.detail.sample(x * 0.15, z * 0.15) * 0.6) return 'green';
+    const outside = this.distanceOutsideGreen(x, z);
+    if (outside < 0) return 'green';
+    // The fringe around the green is cut to fairway length.
+    if (this.isFringe(x, z, outside)) return 'fairway';
     if (Math.hypot(x, z) < 2.5) return 'tee';
     const edge = this.fairwayHalfWidth + this.bumps.sample(x * 0.03 + 50, z * 0.03) * 3;
     return this.distToPath(x, z) < edge ? 'fairway' : 'rough';
@@ -167,13 +177,16 @@ export class Level {
     return x < b.minX || x > b.maxX || z < b.minZ || z > b.maxZ;
   }
 
-  /** Animates the flag in the wind. */
+  /** Animates the flag in the wind: stronger wind flaps it faster and harder. */
   update(time: number): void {
     const pos = this.flag.geometry.getAttribute('position') as THREE.BufferAttribute;
     const rest = this.flagRest;
+    const strength = Math.min(1, this.wind.length() / 6);
+    const amp = 0.03 + 0.08 * strength;
+    const t = time * (3 + 5 * strength);
     for (let i = 0; i < pos.count; i++) {
       const x = rest[i * 3];
-      const wave = Math.sin(x * 5 - time * 6) * 0.09 * x + Math.sin(x * 9 - time * 9) * 0.02 * x;
+      const wave = Math.sin(x * 5 - t) * amp * x + Math.sin(x * 9 - t * 1.5) * amp * 0.25 * x;
       pos.setZ(i, rest[i * 3 + 2] + wave);
     }
     pos.needsUpdate = true;
@@ -224,7 +237,27 @@ export class Level {
     };
   }
 
-  /** Approximate signed distance (meters) to the green's edge; negative inside. */
+  /** Signed distance (meters) to the green's actual edge, including its small wobble; negative on the green. */
+  private distanceOutsideGreen(x: number, z: number): number {
+    return this.greenEdgeDistance(x, z) - this.detail.sample(x * 0.15, z * 0.15) * 0.6;
+  }
+
+  /** Width of the fringe around the green, varying between 0.5 and 2 m along the edge. */
+  private fringeWidth(x: number, z: number): number {
+    return clamp(1.25 + this.bumps.sample(x * 0.12 + 31, z * 0.12 - 17) * 1.1, 0.5, 2);
+  }
+
+  private isFringe(x: number, z: number, outside = this.distanceOutsideGreen(x, z)): boolean {
+    if (outside < 0 || outside > 6) return false;
+    // distanceOutsideGreen is only approximately metric; divide by its gradient for true meters.
+    const e = 0.05;
+    const gx = this.distanceOutsideGreen(x + e, z) - this.distanceOutsideGreen(x - e, z);
+    const gz = this.distanceOutsideGreen(x, z + e) - this.distanceOutsideGreen(x, z - e);
+    const grad = Math.hypot(gx, gz) / (2 * e);
+    return outside / Math.max(grad, 0.2) < this.fringeWidth(x, z);
+  }
+
+  /** Approximate signed distance (meters) to the green's base outline; negative inside. */
   private greenEdgeDistance(x: number, z: number): number {
     const g = this.green;
     const dx = x - g.x;
@@ -287,7 +320,8 @@ export class Level {
 
         const surface = this.surfaceAt(x, z);
         c.copy(palette[surface]);
-        if (surface === 'fairway') c.multiplyScalar(Math.floor(z / 4) & 1 ? 1.07 : 0.95);
+        // Fringe is left unstriped so it reads as a collar around the green.
+        if (surface === 'fairway' && !this.isFringe(x, z)) c.multiplyScalar(Math.floor(z / 4) & 1 ? 1.07 : 0.95);
         else if (surface === 'green') c.multiplyScalar(Math.floor((x + z) / 2.5) & 1 ? 1.05 : 0.96);
         c.multiplyScalar(1 + this.bumps.sample(x * 0.2, z * 0.2) * 0.08);
         colors[i] = c.r;
@@ -363,14 +397,16 @@ export class Level {
     return cup;
   }
 
-  private buildFlag(windAngle: number): THREE.Mesh {
+  private buildFlag(): THREE.Mesh {
     const geometry = new THREE.PlaneGeometry(1.0, 0.65, 16, 4).translate(0.5, 0, 0);
     const flag = new THREE.Mesh(
       geometry,
       new THREE.MeshStandardMaterial({ color: 0xe0262b, roughness: 0.7, side: THREE.DoubleSide }),
     );
     flag.position.set(this.hole.x, this.rimY - CUP_DEPTH + PIN_HEIGHT - 0.36, this.hole.y);
-    flag.rotation.y = windAngle;
+    // Point the flag downwind; in light air it droops toward the pole.
+    const droop = (1 - Math.min(1, this.wind.length() / 5)) * 1.1;
+    flag.rotation.set(0, Math.atan2(-this.wind.z, this.wind.x), -droop);
     flag.castShadow = true;
     this.group.add(flag);
     return flag;

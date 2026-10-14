@@ -12,8 +12,14 @@ import {
 
 /** Slightly lower than Earth gravity. */
 export const GRAVITY = 9.81 * 0.8;
-/** Quadratic air drag coefficient (1/m): a = -k |v| v. */
-const AIR_DRAG = 0.0022;
+/** Quadratic air drag coefficient (1/m): a = -k |v - wind| (v - wind). */
+const AIR_DRAG = 0.0045;
+/** Backspin (Magnus) lift coefficient (1/m): |a| = k |v - wind|², perpendicular to the airflow, upward. */
+const AIR_LIFT = 0.003;
+/** Magnus coefficient for sidespin (spin about the vertical axis): a = k ω_y (up × v_rel). */
+const SIDESPIN_MAGNUS = 0.0006;
+/** Wind right at the turf is slower than aloft; this fraction of it acts on a rolling ball. */
+const GROUND_WIND = 0.5;
 const STEP = 1 / 240;
 const CONTACT_EPS = 0.004;
 /** Below this normal impact speed the ball settles instead of bouncing. */
@@ -22,6 +28,14 @@ const STOP_SPEED = 0.05;
 const MAX_SHOT_TIME = 45;
 /** Fraction of slope gravity that accelerates a solid sphere rolling without slipping. */
 const ROLLING_FACTOR = 5 / 7;
+/** Contact-point slip speed (m/s) below which the ball counts as rolling rather than skidding. */
+const SLIP_EPS = 0.02;
+/** Spin decays in flight with this time constant (s). */
+const SPIN_DECAY_TIME = 20;
+/** For a solid sphere, a friction impulse Δv at the contact changes spin by -(5 / 2r) n × Δv. */
+const SPIN_PER_IMPULSE = 5 / (2 * BALL_RADIUS);
+/** Visual spin is capped in flight so a fast-spinning ball doesn't strobe. */
+const MAX_VISUAL_AIR_SPIN = 25;
 
 const CUP: SurfaceProps = { restitution: 0.2, friction: 0.6, rolling: 0.5 };
 const PIN: SurfaceProps = { restitution: 0.45, friction: 0.15, rolling: 0 };
@@ -33,13 +47,16 @@ const _n = new THREE.Vector3();
 const _c = new THREE.Vector3();
 const _t = new THREE.Vector3();
 const _g = new THREE.Vector3();
-const _axis = new THREE.Vector3();
+const _s = new THREE.Vector3();
+const _w = new THREE.Vector3();
 const _q = new THREE.Quaternion();
 
 export class Ball {
   readonly position = new THREE.Vector3();
   readonly velocity = new THREE.Vector3();
-  /** Visual orientation, rolled as the ball travels along the ground. */
+  /** Angular velocity (rad/s). */
+  readonly spin = new THREE.Vector3();
+  /** Visual orientation, integrated from the spin. */
   readonly orientation = new THREE.Quaternion();
   moving = false;
   sunk = false;
@@ -58,15 +75,23 @@ export class Ball {
   placeAt(p: THREE.Vector3): void {
     this.position.copy(p);
     this.velocity.set(0, 0, 0);
+    this.spin.set(0, 0, 0);
     this.moving = false;
     this.sunk = false;
     this.accumulator = 0;
   }
 
-  /** Launch along a horizontal unit `direction` at `speed` (m/s) and `loft` (radians). */
-  strike(direction: THREE.Vector3, speed: number, loft: number): void {
+  /**
+   * Launch along a horizontal unit `direction` at `speed` (m/s) and `loft` (radians),
+   * with `backspin` in rad/s (negative for topspin) and `sidespin` in rad/s about the
+   * vertical axis (positive curves the ball left: a draw).
+   */
+  strike(direction: THREE.Vector3, speed: number, loft: number, backspin: number, sidespin = 0): void {
     const h = Math.cos(loft) * speed;
     this.velocity.set(direction.x * h, Math.sin(loft) * speed, direction.z * h);
+    // Backspin axis is direction × up: the opposite of a forward roll.
+    this.spin.crossVectors(direction, UP).normalize().multiplyScalar(backspin);
+    this.spin.y += sidespin;
     this.moving = true;
     this.shotTime = 0;
   }
@@ -92,35 +117,55 @@ export class Ball {
     const ground = this.groundAt(p.x, p.z, _n);
     const contact = p.y - BALL_RADIUS <= ground.y + CONTACT_EPS;
 
+    let skidding = false;
     if (contact) {
       const vn = v.dot(_n);
       if (vn < 0) v.addScaledVector(_n, -vn);
-      // Slope component of gravity: g - (g·n)n.
+      // Driving force along the surface: slope gravity, g - (g·n)n, plus a slight push from the wind.
       _g.set(0, -GRAVITY, 0).addScaledVector(_n, GRAVITY * _n.y);
-      v.addScaledVector(_g, ROLLING_FACTOR * h);
-      const speed = v.length();
-      const decel = ground.surface.rolling * GRAVITY * _n.y * h;
-      if (speed <= decel) v.set(0, 0, 0);
-      else v.multiplyScalar(1 - decel / speed);
+      _t.copy(L.wind).multiplyScalar(GROUND_WIND).sub(v);
+      _g.addScaledVector(_t, AIR_DRAG * _t.length());
+      _g.addScaledVector(_n, -_g.dot(_n));
+
+      const slip = this.contactSlip(_n, _s).length();
+      if (slip > SLIP_EPS) {
+        // Skidding: kinetic friction opposes the contact point's slip and trades speed for spin.
+        skidding = true;
+        v.addScaledVector(_g, h);
+        const dv = Math.min(ground.surface.friction * GRAVITY * _n.y * h, (2 / 7) * slip);
+        this.applyFriction(_n, _s.multiplyScalar(-dv / slip));
+      } else {
+        v.addScaledVector(_g, ROLLING_FACTOR * h);
+        const speed = v.length();
+        const decel = ground.surface.rolling * GRAVITY * _n.y * h;
+        if (speed <= decel) v.set(0, 0, 0);
+        else v.multiplyScalar(1 - decel / speed);
+        // Rolling without slipping: spin follows the velocity.
+        this.spin.crossVectors(_n, v).divideScalar(BALL_RADIUS);
+      }
     } else {
+      this.spin.multiplyScalar(1 - h / SPIN_DECAY_TIME);
       v.y -= GRAVITY * h;
-      v.multiplyScalar(1 / (1 + AIR_DRAG * v.length() * h));
+      // Drag and lift act on the velocity relative to the moving air, which is how wind moves the ball.
+      _g.subVectors(v, L.wind);
+      const airSpeed = _g.length();
+      _t.crossVectors(UP, _g);
+      _c.crossVectors(_g, _t);
+      const liftLen = _c.length();
+      v.addScaledVector(_g, -AIR_DRAG * airSpeed * h);
+      if (liftLen > 1e-9) v.addScaledVector(_c, (AIR_LIFT * airSpeed * airSpeed * h) / liftLen);
+      // Sidespin curves the flight sideways: a draw bends left, a fade right.
+      v.addScaledVector(_w.crossVectors(UP, _g), SIDESPIN_MAGNUS * this.spin.y * h);
     }
 
-    const prevX = p.x;
-    const prevZ = p.z;
     p.addScaledVector(v, h);
     this.collide();
 
-    if (contact) {
-      // Roll the visual ball: rotation axis is up × direction of travel.
-      const dx = p.x - prevX;
-      const dz = p.z - prevZ;
-      const dist = Math.hypot(dx, dz);
-      if (dist > 1e-6) {
-        _axis.set(dz, 0, -dx).divideScalar(dist);
-        this.orientation.premultiply(_q.setFromAxisAngle(_axis, dist / BALL_RADIUS));
-      }
+    const spinRate = this.spin.length();
+    if (spinRate > 1e-6) {
+      const visualRate = contact ? spinRate : Math.min(spinRate, MAX_VISUAL_AIR_SPIN);
+      _w.copy(this.spin).divideScalar(spinRate);
+      this.orientation.premultiply(_q.setFromAxisAngle(_w, visualRate * h));
     }
 
     const dHole = Math.hypot(p.x - L.hole.x, p.z - L.hole.y);
@@ -133,10 +178,11 @@ export class Ball {
       return 'out';
     }
     if (contact) {
-      const slopePull = _g.length() * ROLLING_FACTOR;
+      const pull = _g.length() * ROLLING_FACTOR;
       const hold = ground.surface.rolling * GRAVITY * _n.y;
-      if (v.length() < STOP_SPEED && slopePull < hold) {
+      if (!skidding && v.length() < STOP_SPEED && pull < hold) {
         v.set(0, 0, 0);
+        this.spin.set(0, 0, 0);
         this.moving = false;
         return 'stopped';
       }
@@ -214,23 +260,34 @@ export class Ball {
     }
   }
 
-  /** Resolves velocity against a contact normal with restitution and Coulomb friction. */
+  /** Velocity of the ball's contact point along the surface: v_t - r (ω × n). */
+  private contactSlip(n: THREE.Vector3, out: THREE.Vector3): THREE.Vector3 {
+    const v = this.velocity;
+    return out
+      .crossVectors(this.spin, n)
+      .multiplyScalar(-BALL_RADIUS)
+      .add(v)
+      .addScaledVector(n, -v.dot(n));
+  }
+
+  /** Applies a tangential friction impulse `dv` (per unit mass) at the contact point. */
+  private applyFriction(n: THREE.Vector3, dv: THREE.Vector3): void {
+    this.velocity.add(dv);
+    this.spin.addScaledVector(_w.crossVectors(n, dv), -SPIN_PER_IMPULSE);
+  }
+
+  /** Resolves an impact against a contact normal with restitution and Coulomb friction on the slip. */
   private impact(n: THREE.Vector3, surface: SurfaceProps): void {
     const v = this.velocity;
     const vn = v.dot(n);
     if (vn >= 0) return;
-    _t.copy(v).addScaledVector(n, -vn);
-    if (-vn > BOUNCE_MIN_SPEED) {
-      const e = surface.restitution;
-      const vt = _t.length();
-      if (vt > 1e-9) {
-        // Friction can at most bring a sliding sphere to pure rolling (lose 2/7 of slip).
-        const dvt = Math.min(surface.friction * (1 + e) * -vn, (2 / 7) * vt);
-        _t.multiplyScalar(1 - dvt / vt);
-      }
-      v.copy(_t).addScaledVector(n, -vn * e);
-    } else {
-      v.copy(_t);
+    const e = -vn > BOUNCE_MIN_SPEED ? surface.restitution : 0;
+    const slip = this.contactSlip(n, _s).length();
+    v.addScaledVector(n, -vn * (1 + e));
+    if (slip > 1e-9) {
+      // Friction can at most stop the slip, which takes 2/7 of it for a solid sphere.
+      const dv = Math.min(surface.friction * (1 + e) * -vn, (2 / 7) * slip);
+      this.applyFriction(n, _s.multiplyScalar(-dv / slip));
     }
   }
 }

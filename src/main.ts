@@ -9,15 +9,24 @@ interface Club {
   loft: number;
   /** Ball speed at full power (m/s). */
   maxSpeed: number;
+  /** Backspin at full power (rad/s); scales with power. */
+  spin: number;
+  /** Sidespin per degree of swing path off the target line, at full power (rad/s per degree). */
+  sideSpin: number;
 }
 
 const deg = (d: number) => (d * Math.PI) / 180;
 const CLUBS: Club[] = [
-  { name: 'Driver', loft: deg(26), maxSpeed: 44 },
-  { name: 'Iron', loft: deg(38), maxSpeed: 31 },
-  { name: 'Wedge', loft: deg(52), maxSpeed: 21 },
-  { name: 'Putter', loft: 0, maxSpeed: 7 },
+  { name: 'Driver', loft: deg(26), maxSpeed: 44, spin: 120, sideSpin: 180 / 12 },
+  { name: 'Iron', loft: deg(38), maxSpeed: 31, spin: 400, sideSpin: 95 / 12 },
+  { name: 'Wedge', loft: deg(52), maxSpeed: 21, spin: 250, sideSpin: 30 / 12 },
+  { name: 'Putter', loft: 0, maxSpeed: 7, spin: 0, sideSpin: 0 },
 ];
+/**
+ * Swing path off the target line (the camera's view direction) beyond which sidespin stops
+ * growing. A full-power driver aimed 12° right draws back to about the target line.
+ */
+const MAX_PATH_ANGLE = deg(48);
 const PUTTER = CLUBS.length - 1;
 const LIE_NAMES: Record<Surface, string> = { tee: 'Tee', fairway: 'Fairway', green: 'Green', rough: 'Rough' };
 const HOLES_PER_ROUND = 9;
@@ -31,6 +40,9 @@ const hud = {
   club: $('club'),
   lie: $('lie'),
   round: $('round'),
+  windArrow: document.getElementById('wind-arrow') as unknown as SVGPathElement,
+  windSpeed: $('wind-speed'),
+  windRelative: $('wind-relative'),
   power: $('power'),
   powerFill: $('power-fill'),
   powerLabel: $('power-label'),
@@ -146,6 +158,16 @@ arrowHead.renderOrder = 10;
 arrow.visible = false;
 scene.add(arrow);
 
+// Target line: the camera's view direction, which the swing path is measured against.
+const targetLine = new THREE.Line(
+  new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, 14)]),
+  new THREE.LineDashedMaterial({ color: 0xffffff, dashSize: 0.35, gapSize: 0.3, transparent: true, opacity: 0.6, depthTest: false }),
+);
+targetLine.computeLineDistances();
+targetLine.renderOrder = 9;
+targetLine.visible = false;
+scene.add(targetLine);
+
 // --- Game state ------------------------------------------------------------
 
 type State = 'ready' | 'aiming' | 'flying' | 'won';
@@ -163,7 +185,8 @@ let wonTimer = -1;
 const lastRest = new THREE.Vector3();
 
 const rig = { target: new THREE.Vector3(), yaw: 0, pitch: 0.3, distance: 8, yawGoal: null as number | null };
-const aim = { pointerX: 0, pointerY: 0, power: 0, dir: new THREE.Vector3() };
+/** `path` is the signed angle of the shot from the target line; positive is right (in-to-out). */
+const aim = { pointerX: 0, pointerY: 0, power: 0, path: 0, dir: new THREE.Vector3() };
 const drag = { mode: null as 'aim' | 'orbit' | null, lastX: 0, lastY: 0, pointerId: -1 };
 
 function randomSeed(): number {
@@ -221,7 +244,13 @@ function onBallStopped(): void {
 function shoot(): void {
   const club = CLUBS[clubIndex];
   lastRest.copy(ball.position);
-  ball.strike(aim.dir, club.maxSpeed * aim.power, club.loft);
+  const speed = club.maxSpeed * aim.power;
+  // A putt leaves the face already rolling (topspin matching its speed) so it doesn't skid.
+  const backspin = clubIndex === PUTTER ? -speed / BALL_RADIUS : club.spin * aim.power;
+  // An in-to-out path (aimed right of the target line) draws; out-to-in fades.
+  const pathDegrees = (THREE.MathUtils.clamp(aim.path, -MAX_PATH_ANGLE, MAX_PATH_ANGLE) * 180) / Math.PI;
+  const sidespin = club.sideSpin * aim.power * pathDegrees;
+  ball.strike(aim.dir, speed, club.loft, backspin, sidespin);
   strokes++;
   state = 'flying';
 }
@@ -314,6 +343,14 @@ function updateAim(): void {
     const dragX = -fz * dx - fx * dy;
     const dragZ = fx * dx - fz * dy;
     aim.dir.set(-dragX, 0, -dragZ).normalize();
+    aim.path = Math.atan2(aim.dir.x * -fz + aim.dir.z * fx, aim.dir.x * fx + aim.dir.z * fz);
+    // Past max draw/fade the arrow stops turning, showing the limit has been reached.
+    if (clubIndex !== PUTTER && Math.abs(aim.path) > MAX_PATH_ANGLE) {
+      aim.path = Math.sign(aim.path) * MAX_PATH_ANGLE;
+      const c = Math.cos(aim.path);
+      const sn = Math.sin(aim.path);
+      aim.dir.set(fx * c - fz * sn, 0, fz * c + fx * sn);
+    }
   }
 }
 
@@ -440,6 +477,7 @@ function updateAimVisuals(time: number): void {
 
   const aiming = state === 'aiming';
   arrow.visible = aiming && aim.power > 0.01;
+  targetLine.visible = aiming && clubIndex !== PUTTER;
   hud.power.hidden = !aiming;
   hud.dragLine.style.visibility = aiming ? 'visible' : 'hidden';
   if (!aiming) return;
@@ -454,7 +492,9 @@ function updateAimVisuals(time: number): void {
   arrowMaterial.color.setHSL((1 - aim.power) * 0.33, 0.85, 0.55);
 
   hud.powerFill.style.width = `${aim.power * 100}%`;
-  hud.powerLabel.textContent = club.name;
+  hud.powerLabel.textContent = clubIndex === PUTTER ? club.name : `${club.name} · ${shotShape()}`;
+  targetLine.position.set(p.x, p.y, p.z);
+  targetLine.rotation.y = rig.yaw + Math.PI;
   const s = ballScreenPosition();
   hud.dragLine.setAttribute('x1', String(s.x));
   hud.dragLine.setAttribute('y1', String(s.y));
@@ -462,7 +502,47 @@ function updateAimVisuals(time: number): void {
   hud.dragLine.setAttribute('y2', String(aim.pointerY));
 }
 
+/** Describes the wind relative to the line from the ball to the pin. */
+function windRelativeLabel(): string {
+  const w = level.wind;
+  const speed = w.length();
+  if (speed < 0.5) return 'Calm';
+  const hx = level.hole.x - ball.position.x;
+  const hz = level.hole.y - ball.position.z;
+  const len = Math.hypot(hx, hz) || 1;
+  const along = (w.x * hx + w.z * hz) / (len * speed);
+  // Positive when the wind blows to the right of the pin line.
+  const cross = (w.x * -hz + w.z * hx) / (len * speed);
+  if (along > 0.75) return 'Helping';
+  if (along < -0.75) return 'Into you';
+  const side = cross > 0 ? 'left to right' : 'right to left';
+  return along > 0.3 ? `Helping, ${side}` : along < -0.3 ? `Into, ${side}` : `Cross, ${side}`;
+}
+
+function updateWindIndicator(): void {
+  const w = level.wind;
+  // Rotate so "up" on the dial is the camera's view direction.
+  const fx = -Math.sin(rig.yaw);
+  const fz = -Math.cos(rig.yaw);
+  const angle = Math.atan2(w.x * -fz + w.z * fx, w.x * fx + w.z * fz);
+  hud.windArrow.setAttribute('transform', `rotate(${(angle * 180) / Math.PI})`);
+  hud.windArrow.style.visibility = w.length() < 0.5 ? 'hidden' : 'visible';
+  hud.windSpeed.textContent = `${w.length().toFixed(1)} m/s`;
+  hud.windRelative.textContent = windRelativeLabel();
+}
+
+function shotShape(): string {
+  const amount = Math.abs(aim.path) / MAX_PATH_ANGLE;
+  if (amount < 0.06) return 'Straight';
+  const shape = aim.path > 0 ? 'Draw' : 'Fade';
+  // Sidespin stops growing past MAX_PATH_ANGLE.
+  if (amount < 0.25) return `Slight ${shape.toLowerCase()}`;
+  if (amount < 0.6) return shape;
+  return amount < 0.95 ? `Big ${shape.toLowerCase()}` : `Max ${shape.toLowerCase()}`;
+}
+
 function updateHud(): void {
+  updateWindIndicator();
   const d = distanceToPin();
   hud.toPin.textContent = state === 'won' ? 'In the hole' : `${d < 10 ? d.toFixed(1) : Math.round(d)} m`;
   hud.strokes.textContent = String(strokes);
