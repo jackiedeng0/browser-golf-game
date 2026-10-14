@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Claude Golf</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <svg id="aim-overlay" aria-hidden="true"><line id="drag-line" x1="0" y1="0" x2="0" y2="0" /></svg>
+
+    <div id="hud">
+      <div class="panel" id="info">
+        <div class="title">Hole <span id="hole-num">1</span> of 9 · Par <span id="par">3</span></div>
+        <dl>
+          <dt>To pin</dt><dd id="to-pin">–</dd>
+          <dt>Strokes</dt><dd id="strokes">0</dd>
+          <dt>Club</dt><dd id="club">–</dd>
+          <dt>Lie</dt><dd id="lie">–</dd>
+          <dt>Round</dt><dd id="round">–</dd>
+        </dl>
+      </div>
+      <button id="new-hole" type="button">New hole</button>
+      <div id="power" hidden>
+        <div id="power-fill"></div>
+        <span id="power-label"></span>
+      </div>
+      <div id="toast"></div>
+      <div id="hint">
+        Drag back from the ball and release to shoot · Drag elsewhere to look around · Scroll to zoom · C to change club
+      </div>
+    </div>
+
+    <div id="result" hidden>
+      <div class="card">
+        <h2 id="result-title"></h2>
+        <p id="result-detail"></p>
+        <table id="scorecard"></table>
+        <p id="round-summary"></p>
+        <button id="result-new" type="button">Play a new hole</button>
+        <small>or press Enter</small>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
