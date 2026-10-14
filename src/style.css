@@ -195,6 +195,62 @@ button:hover {
   color: var(--muted);
 }
 
+/* Vertical position and horizontal limits are set in updatePinMarker(), level with the wind panel. */
+#pin-marker {
+  position: absolute;
+  top: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  border-radius: 16px;
+  background: var(--panel-bg);
+  font-weight: 600;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Small pointer under the marker while the pin is on screen. */
+#pin-marker::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -6px;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-bottom: 0;
+  border-top-color: var(--panel-bg);
+}
+
+#pin-marker.off-left::after,
+#pin-marker.off-right::after,
+#pin-marker[hidden] {
+  display: none;
+}
+
+.pin-flag {
+  width: 12px;
+  height: 16px;
+  color: var(--text);
+}
+
+#pin-elev {
+  color: var(--muted);
+}
+
+.pin-arrow {
+  display: none;
+  color: var(--accent);
+}
+
+#pin-marker.off-left #pin-left,
+#pin-marker.off-right #pin-right {
+  display: inline;
+}
+
 #toast {
   position: absolute;
   left: 50%;
@@ -220,7 +276,18 @@ button:hover {
   background: rgba(8, 20, 10, 0.35);
 }
 
+#loading {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(8, 20, 10, 0.45);
+  font-size: 18px;
+  font-weight: 600;
+}
+
 #result[hidden],
+#loading[hidden],
 #power[hidden] {
   display: none;
 }
@@ -242,38 +309,6 @@ button:hover {
 #result p {
   margin: 0 0 20px;
   color: var(--muted);
-}
-
-#scorecard {
-  margin: 0 auto 12px;
-  border-collapse: collapse;
-  font-size: 13px;
-  font-variant-numeric: tabular-nums;
-}
-
-#scorecard th,
-#scorecard td {
-  padding: 4px 7px;
-  text-align: center;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-}
-
-#scorecard th {
-  color: var(--muted);
-  font-weight: 600;
-}
-
-#scorecard .under {
-  color: #7fe07f;
-}
-
-#scorecard .over {
-  color: #ff9a7a;
-}
-
-#round-summary {
-  color: var(--text) !important;
-  font-weight: 600;
 }
 
 #result small {

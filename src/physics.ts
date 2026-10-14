@@ -7,6 +7,7 @@ import {
   PIN_HEIGHT,
   PIN_RADIUS,
   SURFACES,
+  TREE_STRIDE,
   type SurfaceProps,
 } from './level';
 
@@ -39,8 +40,12 @@ const MAX_VISUAL_AIR_SPIN = 25;
 
 const CUP: SurfaceProps = { restitution: 0.2, friction: 0.6, rolling: 0.5 };
 const PIN: SurfaceProps = { restitution: 0.45, friction: 0.15, rolling: 0 };
+const TRUNK: SurfaceProps = { restitution: 0.45, friction: 0.3, rolling: 0 };
+/** Inside a tree's canopy the ball loses speed at this rate (1/s) and is knocked off line. */
+const CANOPY_DRAG = 3.5;
+const CANOPY_SCATTER = 6;
 
-export type BallEvent = 'stopped' | 'sunk' | 'out';
+export type BallEvent = 'stopped' | 'sunk' | 'out' | 'water';
 
 const UP = new THREE.Vector3(0, 1, 0);
 const _n = new THREE.Vector3();
@@ -160,6 +165,7 @@ export class Ball {
 
     p.addScaledVector(v, h);
     this.collide();
+    this.collideTrees(h);
 
     const spinRate = this.spin.length();
     if (spinRate > 1e-6) {
@@ -172,6 +178,11 @@ export class Ball {
     if (!this.sunk && dHole < HOLE_RADIUS && p.y + BALL_RADIUS < L.rimY) {
       this.sunk = true;
       return 'sunk';
+    }
+    const waterLevel = L.waterLevelAt(p.x, p.z);
+    if (p.y - BALL_RADIUS <= waterLevel) {
+      this.moving = false;
+      return 'water';
     }
     if (L.isOutOfBounds(p.x, p.z)) {
       this.moving = false;
@@ -253,10 +264,39 @@ export class Ball {
     const pz = p.z - L.hole.y;
     const pd = Math.hypot(px, pz) || 1e-6;
     const minD = r + PIN_RADIUS;
-    if (pd < minD && p.y - r < floorY + PIN_HEIGHT) {
+    if (!L.pinLifted && pd < minD && p.y - r < floorY + PIN_HEIGHT) {
       p.x = L.hole.x + (px / pd) * minD;
       p.z = L.hole.y + (pz / pd) * minD;
       this.impact(_c.set(px / pd, 0, pz / pd), PIN);
+    }
+  }
+
+  /** Trunks are solid; canopies (approximated as spheres) slow the ball and scatter it. */
+  private collideTrees(h: number): void {
+    const L = this.level;
+    const p = this.position;
+    const v = this.velocity;
+    const t = L.trees;
+    for (const i of L.treesNear(p.x, p.z)) {
+      const o = i * TREE_STRIDE;
+      const dx = p.x - t[o];
+      const dz = p.z - t[o + 1];
+      const d = Math.hypot(dx, dz) || 1e-6;
+      const minD = t[o + 3] + BALL_RADIUS;
+      if (d < minD && p.y - BALL_RADIUS < t[o + 4]) {
+        p.x = t[o] + (dx / d) * minD;
+        p.z = t[o + 1] + (dz / d) * minD;
+        this.impact(_c.set(dx / d, 0, dz / d), TRUNK);
+      }
+      const cy = p.y - t[o + 5];
+      const r = t[o + 6];
+      if (dx * dx + dz * dz + cy * cy < r * r) {
+        const speed = v.length();
+        v.multiplyScalar(Math.exp(-CANOPY_DRAG * h));
+        v.x += (Math.random() - 0.5) * speed * CANOPY_SCATTER * h;
+        v.y += (Math.random() - 0.5) * speed * CANOPY_SCATTER * h;
+        v.z += (Math.random() - 0.5) * speed * CANOPY_SCATTER * h;
+      }
     }
   }
 

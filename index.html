@@ -11,14 +11,12 @@
 
     <div id="hud">
       <div class="panel" id="info">
-        <div class="title">Hole <span id="hole-num">1</span> of 9 · Par <span id="par">3</span></div>
+        <div class="title">Par <span id="par">10</span> · <span id="length">–</span> m</div>
         <dl>
-          <dt>To pin</dt><dd id="to-pin">–</dd>
           <dt>Strokes</dt><dd id="strokes">0</dd>
           <dt>Club</dt><dd id="club">–</dd>
           <dt>Lie</dt><dd id="lie">–</dd>
           <dt>Slope</dt><dd id="slope">–</dd>
-          <dt>Round</dt><dd id="round">–</dd>
         </dl>
       </div>
       <div class="top-right">
@@ -40,18 +38,28 @@
         <div id="power-fill"></div>
         <span id="power-label"></span>
       </div>
+      <div id="pin-marker">
+        <span class="pin-arrow" id="pin-left">◀ <span id="pin-left-deg"></span></span>
+        <svg class="pin-flag" viewBox="0 0 12 16" aria-hidden="true">
+          <path d="M2.5 1.5v13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+          <path d="M3 1.5l7.5 3-7.5 3z" fill="#e0262b" />
+        </svg>
+        <span id="pin-dist">–</span>
+        <span id="pin-elev"></span>
+        <span class="pin-arrow" id="pin-right"><span id="pin-right-deg"></span> ▶</span>
+      </div>
       <div id="toast"></div>
       <div id="hint">
         Drag back from the ball and release to shoot · Aim right of the target line to draw, left to fade · Drag elsewhere to look around · Scroll to zoom · C to change club
       </div>
     </div>
 
+    <div id="loading">Generating course…</div>
+
     <div id="result" hidden>
       <div class="card">
         <h2 id="result-title"></h2>
         <p id="result-detail"></p>
-        <table id="scorecard"></table>
-        <p id="round-summary"></p>
         <button id="result-new" type="button">Play a new hole</button>
         <small>or press Enter</small>
       </div>

@@ -17,7 +17,7 @@ interface Club {
 
 const deg = (d: number) => (d * Math.PI) / 180;
 const CLUBS: Club[] = [
-  { name: 'Driver', loft: deg(26), maxSpeed: 44, spin: 120, sideSpin: 180 / 12 },
+  { name: 'Driver', loft: deg(26), maxSpeed: 48, spin: 120, sideSpin: 180 / 12 },
   { name: 'Iron', loft: deg(38), maxSpeed: 31, spin: 400, sideSpin: 95 / 12 },
   { name: 'Wedge', loft: deg(52), maxSpeed: 21, spin: 250, sideSpin: 30 / 12 },
   { name: 'Putter', loft: 0, maxSpeed: 7, spin: 0, sideSpin: 0 },
@@ -35,19 +35,36 @@ const MIN_LOFT = deg(4);
  */
 const SIDEHILL_PATH_BIAS = 1.5;
 const PUTTER = CLUBS.length - 1;
-const LIE_NAMES: Record<Surface, string> = { tee: 'Tee', fairway: 'Fairway', green: 'Green', rough: 'Rough' };
-const HOLES_PER_ROUND = 9;
+const LIE_NAMES: Record<Surface, string> = {
+  tee: 'Tee',
+  fairway: 'Fairway',
+  green: 'Green',
+  rough: 'Rough',
+  bunker: 'Bunker',
+  water: 'Water',
+};
+/** Shots from sand come off slower and with extra spin. */
+const BUNKER_SPEED = 0.7;
+const BUNKER_SPIN = 1.5;
+/** The camera faces a point this far down the fairway (m) rather than the far-off pin. */
+const AIM_AHEAD = 180;
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const hud = {
-  holeNum: $('hole-num'),
   par: $('par'),
-  toPin: $('to-pin'),
+  length: $('length'),
+  loading: $('loading'),
+  pinMarker: $('pin-marker'),
+  infoPanel: $('info'),
+  windPanel: $('wind'),
+  pinDist: $('pin-dist'),
+  pinElev: $('pin-elev'),
+  pinLeftDeg: $('pin-left-deg'),
+  pinRightDeg: $('pin-right-deg'),
   strokes: $('strokes'),
   club: $('club'),
   lie: $('lie'),
   slope: $('slope'),
-  round: $('round'),
   windArrow: document.getElementById('wind-arrow') as unknown as SVGPathElement,
   windSpeed: $('wind-speed'),
   windRelative: $('wind-relative'),
@@ -58,9 +75,6 @@ const hud = {
   result: $('result'),
   resultTitle: $('result-title'),
   resultDetail: $('result-detail'),
-  scorecard: $('scorecard'),
-  roundSummary: $('round-summary'),
-  resultNew: $('result-new'),
   dragLine: document.getElementById('drag-line') as unknown as SVGLineElement,
 };
 
@@ -80,7 +94,7 @@ scene.background = HORIZON;
 scene.fog = new THREE.Fog(HORIZON, 150, 520);
 
 const sky = new THREE.Mesh(
-  new THREE.SphereGeometry(1000, 32, 16),
+  new THREE.SphereGeometry(700, 32, 16),
   new THREE.ShaderMaterial({
     side: THREE.BackSide,
     depthWrite: false,
@@ -104,7 +118,8 @@ const sky = new THREE.Mesh(
 );
 scene.add(sky);
 
-const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.05, 2000);
+// Fog hides everything past ~520 m, so the far plane can cull distant terrain tiles.
+const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.05, 900);
 
 scene.add(new THREE.HemisphereLight(0xd8ecff, 0x4b6b2f, 1.1));
 const sun = new THREE.DirectionalLight(0xfff3dd, 2.4);
@@ -183,10 +198,8 @@ type State = 'ready' | 'aiming' | 'flying' | 'won';
 let level = new Level(randomSeed());
 scene.add(level.group);
 const ball = new Ball(level);
-/** Completed holes in the current round. */
-let card: { par: number; strokes: number }[] = [];
-let holeNumber = 1;
 let strokes = 0;
+let generating = false;
 let state: State = 'ready';
 let clubIndex = 0;
 let wonTimer = -1;
@@ -202,51 +215,70 @@ function randomSeed(): number {
 }
 
 function startHole(): void {
-  holeNumber = card.length + 1;
   lastRest.copy(level.tee);
   strokes = 0;
   state = 'ready';
   wonTimer = -1;
   hud.result.hidden = true;
   rig.target.copy(ball.position);
-  rig.yaw = yawTowardHole();
+  rig.yaw = yawDownFairway();
   rig.yawGoal = null;
   rig.pitch = 0.3;
   rig.distance = 8;
   autoSelectClub();
-  hud.holeNum.textContent = String(holeNumber);
   hud.par.textContent = String(level.par);
+  hud.length.textContent = Math.round(level.distance).toLocaleString();
+  hud.loading.hidden = true;
 }
 
-/** Advances to the next hole after a finish; mid-hole it re-rolls the current hole without scoring it. */
+/** Generates a new hole. Building one takes most of a second, so show a message first. */
 function newHole(): void {
-  if (card.length >= HOLES_PER_ROUND) card = [];
-  scene.remove(level.group);
-  level.dispose();
-  level = new Level(randomSeed());
-  scene.add(level.group);
-  ball.setLevel(level);
-  startHole();
+  if (generating) return;
+  generating = true;
+  hud.loading.hidden = false;
+  // Wait two frames so the message is painted before the main thread is busy.
+  requestAnimationFrame(() =>
+    requestAnimationFrame(() => {
+      scene.remove(level.group);
+      level.dispose();
+      level = new Level(randomSeed());
+      scene.add(level.group);
+      ball.setLevel(level);
+      startHole();
+      generating = false;
+    }),
+  );
 }
 
+/** Distance left to play, measured along the fairway. */
 function distanceToPin(): number {
-  return Math.hypot(ball.position.x - level.hole.x, ball.position.z - level.hole.y);
+  return level.remainingDistance(ball.position.x, ball.position.z);
 }
 
-function yawTowardHole(): number {
-  return Math.atan2(-(level.hole.x - ball.position.x), -(level.hole.y - ball.position.z));
+const _ahead = new THREE.Vector2();
+
+/** The point the camera and wind readout face: a long shot down the fairway, or the pin. */
+function targetAhead(): THREE.Vector2 {
+  return level.targetAhead(ball.position.x, ball.position.z, AIM_AHEAD, _ahead);
+}
+
+function yawDownFairway(): number {
+  const t = targetAhead();
+  return Math.atan2(-(t.x - ball.position.x), -(t.y - ball.position.z));
 }
 
 function autoSelectClub(): void {
   const lie = level.surfaceAt(ball.position.x, ball.position.z);
   const d = distanceToPin();
-  clubIndex = lie === 'green' ? PUTTER : d > 120 ? 0 : d > 55 ? 1 : 2;
+  clubIndex = lie === 'green' ? PUTTER : lie === 'bunker' && d < 70 ? 2 : d > 120 ? 0 : d > 55 ? 1 : 2;
 }
 
 function onBallStopped(): void {
   state = 'ready';
+  // On the green the flagstick hovers above the cup so putts can't hit it.
+  level.liftPin(level.surfaceAt(ball.position.x, ball.position.z) === 'green');
   autoSelectClub();
-  rig.yawGoal = yawTowardHole();
+  rig.yawGoal = yawDownFairway();
 }
 
 const _lieNormal = new THREE.Vector3();
@@ -274,9 +306,10 @@ function shotParams(): { loft: number; path: number } {
 function shoot(): void {
   const club = CLUBS[clubIndex];
   lastRest.copy(ball.position);
-  const speed = club.maxSpeed * aim.power;
+  const inSand = level.surfaceAt(ball.position.x, ball.position.z) === 'bunker';
+  const speed = club.maxSpeed * aim.power * (inSand ? BUNKER_SPEED : 1);
   // A putt leaves the face already rolling (topspin matching its speed) so it doesn't skid.
-  const backspin = clubIndex === PUTTER ? -speed / BALL_RADIUS : club.spin * aim.power;
+  const backspin = clubIndex === PUTTER ? -speed / BALL_RADIUS : club.spin * aim.power * (inSand ? BUNKER_SPIN : 1);
   // An in-to-out path (aimed right of the target line) draws; out-to-in fades.
   const { loft, path } = shotParams();
   const sidespin = club.sideSpin * aim.power * ((path * 180) / Math.PI);
@@ -287,27 +320,6 @@ function shoot(): void {
 
 function formatToPar(diff: number): string {
   return diff === 0 ? 'E' : diff > 0 ? `+${diff}` : String(diff);
-}
-
-function roundTotals(): { strokes: number; toPar: number } {
-  const total = card.reduce((sum, h) => sum + h.strokes, 0);
-  return { strokes: total, toPar: total - card.reduce((sum, h) => sum + h.par, 0) };
-}
-
-function renderScorecard(): void {
-  const cells = (fn: (i: number) => string) =>
-    Array.from({ length: HOLES_PER_ROUND }, (_, i) => fn(i)).join('');
-  const totals = roundTotals();
-  const parTotal = card.reduce((sum, h) => sum + h.par, 0);
-  hud.scorecard.innerHTML = `
-    <tr><th>Hole</th>${cells((i) => `<th>${i + 1}</th>`)}<th>Tot</th></tr>
-    <tr><th>Par</th>${cells((i) => `<td>${card[i]?.par ?? ''}</td>`)}<td>${parTotal}</td></tr>
-    <tr><th>Score</th>${cells((i) => {
-      const h = card[i];
-      if (!h) return '<td></td>';
-      const cls = h.strokes < h.par ? 'under' : h.strokes > h.par ? 'over' : '';
-      return `<td class="${cls}">${h.strokes}</td>`;
-    })}<td>${totals.strokes}</td></tr>`;
 }
 
 function showResult(): void {
@@ -322,14 +334,7 @@ function showResult(): void {
     '3': 'Triple bogey',
   };
   hud.resultTitle.textContent = strokes === 1 ? 'Hole in one!' : (names[String(diff)] ?? `${diff > 0 ? '+' : ''}${diff}`);
-  hud.resultDetail.textContent = `${strokes} stroke${strokes === 1 ? '' : 's'} on a ${Math.round(level.distance)} m par ${level.par}.`;
-  renderScorecard();
-  const totals = roundTotals();
-  const finished = card.length >= HOLES_PER_ROUND;
-  hud.roundSummary.textContent = finished
-    ? `Round complete: ${totals.strokes} strokes (${formatToPar(totals.toPar)})`
-    : `Round: ${totals.strokes} strokes (${formatToPar(totals.toPar)}) after ${card.length} of ${HOLES_PER_ROUND}`;
-  hud.resultNew.textContent = finished ? 'Start a new round' : 'Next hole';
+  hud.resultDetail.textContent = `${strokes} stroke${strokes === 1 ? '' : 's'} (${formatToPar(diff)}) on a ${Math.round(level.distance).toLocaleString()} m par ${level.par}.`;
   hud.result.hidden = false;
   $('result-new').focus();
 }
@@ -532,13 +537,14 @@ function updateAimVisuals(time: number): void {
   hud.dragLine.setAttribute('y2', String(aim.pointerY));
 }
 
-/** Describes the wind relative to the line from the ball to the pin. */
+/** Describes the wind relative to the line the camera turns to after each shot (down the fairway). */
 function windRelativeLabel(): string {
   const w = level.wind;
   const speed = w.length();
   if (speed < 0.5) return 'Calm';
-  const hx = level.hole.x - ball.position.x;
-  const hz = level.hole.y - ball.position.z;
+  const t = targetAhead();
+  const hx = t.x - ball.position.x;
+  const hz = t.y - ball.position.z;
   const len = Math.hypot(hx, hz) || 1;
   const along = (w.x * hx + w.z * hz) / (len * speed);
   // Positive when the wind blows to the right of the pin line.
@@ -572,14 +578,54 @@ function shotShape(): string {
   return amount < 0.95 ? `Big ${shape.toLowerCase()}` : `Max ${shape.toLowerCase()}`;
 }
 
+/**
+ * Places the pin marker at a fixed height, horizontally over the pin's bearing from the
+ * camera. Off screen, it sticks to that edge and shows how far to turn to face the pin.
+ */
+function updatePinMarker(): void {
+  const el = hud.pinMarker;
+  el.hidden = state === 'won';
+  if (el.hidden) return;
+
+  const d = distanceToPin();
+  hud.pinDist.textContent = `${d < 10 ? d.toFixed(1) : Math.round(d).toLocaleString()} m`;
+  const rise = level.rimY - (ball.position.y - BALL_RADIUS);
+  hud.pinElev.textContent = Math.abs(rise) < 0.1 ? 'level' : `${rise > 0 ? '↑' : '↓'} ${Math.abs(rise).toFixed(1)} m`;
+
+  // Pin bearing from the camera's view direction, positive to the right.
+  const fx = -Math.sin(rig.yaw);
+  const fz = -Math.cos(rig.yaw);
+  const dx = level.hole.x - camera.position.x;
+  const dz = level.hole.y - camera.position.z;
+  const bearing = Math.atan2(dx * -fz + dz * fx, dx * fx + dz * fz);
+  const halfFov = Math.atan(Math.tan(deg(camera.fov / 2)) * camera.aspect);
+
+  const w = window.innerWidth;
+  const onScreen = Math.abs(bearing) < halfFov;
+  const x = onScreen ? w / 2 + (Math.tan(bearing) / Math.tan(halfFov)) * (w / 2) : bearing < 0 ? 0 : w;
+
+  // Level with the wind panel, and kept in the gap between the side panels.
+  const info = hud.infoPanel.getBoundingClientRect();
+  const wind = hud.windPanel.getBoundingClientRect();
+  el.style.top = `${wind.top + wind.height / 2 - el.offsetHeight / 2}px`;
+  const half = el.offsetWidth / 2;
+  const minX = info.right + 10 + half;
+  const maxX = wind.left - 10 - half;
+  const fits = minX <= maxX;
+  el.style.left = `${fits ? THREE.MathUtils.clamp(x, minX, maxX) : (info.right + wind.left) / 2}px`;
+  // Beyond the marker's range (not just off screen), show which way to turn instead of the pointer.
+  el.classList.toggle('off-left', fits ? x < minX : !onScreen && bearing < 0);
+  el.classList.toggle('off-right', fits ? x > maxX : !onScreen && bearing > 0);
+  const turn = `${Math.round((Math.abs(bearing) * 180) / Math.PI)}°`;
+  hud.pinLeftDeg.textContent = turn;
+  hud.pinRightDeg.textContent = turn;
+}
+
 function updateHud(): void {
   updateWindIndicator();
-  const d = distanceToPin();
-  hud.toPin.textContent = state === 'won' ? 'In the hole' : `${d < 10 ? d.toFixed(1) : Math.round(d)} m`;
+  updatePinMarker();
   hud.strokes.textContent = String(strokes);
   hud.club.textContent = CLUBS[clubIndex].name;
-  const totals = roundTotals();
-  hud.round.textContent = card.length ? `${totals.strokes} (${formatToPar(totals.toPar)})` : '–';
   hud.lie.textContent = ball.sunk ? 'Cup' : ball.moving ? '–' : LIE_NAMES[level.surfaceAt(ball.position.x, ball.position.z)];
   hud.slope.textContent = ball.sunk || ball.moving ? '–' : slopeLabel();
 }
@@ -605,14 +651,14 @@ function frame(now: number): void {
   if (ball.moving) {
     const event = ball.update(dt);
     if (event === 'sunk') {
-      card.push({ par: level.par, strokes });
       state = 'won';
       wonTimer = 0.9;
     } else if (event === 'stopped' && state === 'flying') {
       onBallStopped();
-    } else if (event === 'out' && state === 'flying') {
+    } else if ((event === 'out' || event === 'water') && state === 'flying') {
+      // Stroke and distance: one penalty stroke, replay from where the shot was hit.
       strokes++;
-      toast('Out of bounds · +1 stroke penalty');
+      toast(event === 'water' ? 'Water hazard · +1 stroke penalty' : 'Out of bounds · +1 stroke penalty');
       ball.placeAt(lastRest);
       onBallStopped();
     }
