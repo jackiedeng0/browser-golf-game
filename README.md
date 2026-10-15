@@ -1,4 +1,4 @@
-# Claude Golf Game
+# Browser Golf Game
 
 A browser golf game built with TypeScript and [three.js](https://threejs.org/). The whole game is one long, randomly generated par 10: a winding fairway of 1.1–1.4 km that can climb or drop up to 200 m, with bunkers, lakes, creeks, wooded and ridged sides, and its own wind. The ball physics are custom-written and include spin, so you can spin wedges back and shape draws and fades.
 
