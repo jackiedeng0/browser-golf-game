@@ -82,11 +82,83 @@
         </section>
         <div class="actions">
           <button id="open-file" class="secondary" type="button">Open file…</button>
-          <button id="editor" class="secondary" type="button" disabled>Editor (coming soon)</button>
+          <button id="editor-start" class="secondary" type="button">Editor</button>
         </div>
         <p id="start-error" role="alert" hidden></p>
         <input id="file-input" type="file" accept=".json,application/json" hidden />
       </div>
+    </div>
+
+    <div id="editor" hidden>
+      <canvas id="editor-canvas"></canvas>
+      <div id="editor-bar" class="panel">
+        <label>Name <input id="editor-name" type="text" size="18" /></label>
+        <label>Par <input id="editor-par" type="number" min="1" max="20" step="1" /></label>
+        <span class="spacer"></span>
+        <button id="editor-undo" class="secondary" type="button" title="Ctrl+Z">Undo</button>
+        <button id="editor-redo" class="secondary" type="button" title="Ctrl+Shift+Z">Redo</button>
+        <button id="editor-new" class="secondary" type="button">New…</button>
+        <button id="editor-open" class="secondary" type="button">Open…</button>
+        <button id="editor-save" class="secondary" type="button">Save</button>
+        <button id="editor-play" type="button">Play test</button>
+        <button id="editor-exit" class="secondary" type="button">Exit</button>
+      </div>
+      <div id="editor-side">
+        <div id="editor-tools" class="panel">
+          <h3>Terrain</h3>
+          <div class="tools">
+            <button type="button" data-tool="raise">Raise</button>
+            <button type="button" data-tool="lower">Lower</button>
+            <button type="button" data-tool="smooth">Smooth</button>
+            <button type="button" data-tool="flatten">Flatten</button>
+            <button type="button" data-tool="set">Set height</button>
+          </div>
+          <h3>Paint</h3>
+          <div class="tools">
+            <button type="button" data-tool="surface">Surface</button>
+            <button type="button" data-tool="wind">Wind zone</button>
+            <button type="button" data-tool="water">Water level</button>
+          </div>
+          <h3>Markers</h3>
+          <div class="tools">
+            <button type="button" data-tool="tee">Tee</button>
+            <button type="button" data-tool="cup">Cup</button>
+            <button type="button" data-tool="line">Line of play</button>
+          </div>
+          <h3>Objects</h3>
+          <div class="tools">
+            <button type="button" data-tool="place">Place</button>
+            <button type="button" data-tool="move">Move</button>
+            <button type="button" data-tool="rotate">Rotate</button>
+            <button type="button" data-tool="delete">Delete</button>
+            <button type="button" data-tool="scatter">Scatter</button>
+          </div>
+        </div>
+        <div id="editor-options" class="panel"></div>
+      </div>
+      <div id="editor-status" class="panel"></div>
+      <input id="editor-file" type="file" accept=".json,application/json" hidden />
+      <dialog id="editor-new-dialog">
+        <form method="dialog">
+          <h2>New level</h2>
+          <p class="note">Size of the map, in metres. The tee starts at the bottom and the cup at the top.</p>
+          <div class="fields">
+            <label>Width <input id="new-width" type="number" min="40" max="1000" step="10" value="200" /></label>
+            <label>Length <input id="new-length" type="number" min="40" max="3000" step="10" value="600" /></label>
+          </div>
+          <div class="actions">
+            <button id="new-blank" type="button">Blank</button>
+          </div>
+          <p class="note">Or start from a random hole (it picks its own size):</p>
+          <div class="fields">
+            <label>Seed <input id="new-seed" type="number" min="0" step="1" /></label>
+          </div>
+          <div class="actions">
+            <button id="new-random" class="secondary" type="button">From random</button>
+            <button id="new-cancel" class="secondary" value="cancel">Cancel</button>
+          </div>
+        </form>
+      </dialog>
     </div>
 
     <script type="module" src="/src/main.ts"></script>

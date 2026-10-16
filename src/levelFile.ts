@@ -92,6 +92,9 @@ export async function decodeLevel(json: unknown): Promise<LevelData> {
 /** Heights are stored as whole millimetres. */
 const MM = 1000;
 
+/** A height as a level file stores it. Editing keeps heights this way, so what's saved is what was played. */
+export const toMillimetre = (h: number): number => Math.round(h * MM) / MM;
+
 /**
  * Each height in millimetres, minus a prediction from the neighbors before it (left + up -
  * up-left: exact on any plane). Smooth ground predicts well, so most values are tiny.

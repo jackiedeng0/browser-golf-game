@@ -300,6 +300,7 @@ button:disabled {
 }
 
 #hud[hidden],
+#editor[hidden],
 #result[hidden],
 #loading[hidden],
 #start[hidden],
@@ -411,4 +412,215 @@ button:disabled {
   margin: 16px 0 0;
   color: var(--error);
   text-align: center;
+}
+
+/* --- Editor --------------------------------------------------------------- */
+
+#editor {
+  position: fixed;
+  inset: 0;
+  background: #0d1a10;
+  font-size: 14px;
+}
+
+#editor-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+}
+
+#editor .panel {
+  position: absolute;
+  pointer-events: auto;
+}
+
+#editor-bar {
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+}
+
+#editor-bar .spacer {
+  flex: 1;
+}
+
+#editor-bar button,
+#editor-side button {
+  padding: 6px 12px;
+}
+
+#editor input,
+#editor select {
+  font: inherit;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  padding: 4px 6px;
+}
+
+#editor input[type='number'] {
+  width: 5.5em;
+}
+
+#editor input[type='range'] {
+  padding: 0;
+  width: 100%;
+}
+
+#editor label {
+  color: var(--muted);
+}
+
+#editor-side {
+  position: absolute;
+  top: 76px;
+  left: 12px;
+  bottom: 52px;
+  width: 230px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  pointer-events: none;
+}
+
+#editor-side .panel {
+  position: static;
+  padding: 10px 12px;
+}
+
+#editor-tools h3 {
+  margin: 8px 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+#editor-tools h3:first-child {
+  margin-top: 0;
+}
+
+#editor-tools .tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+#editor-tools button {
+  color: var(--text);
+  background: var(--quiet-button);
+}
+
+#editor-tools button.active {
+  color: #10301a;
+  background: var(--accent);
+}
+
+#editor-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#editor-options:empty {
+  display: none;
+}
+
+#editor-options .row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+#editor-options .zone {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+#editor-options .zone > button {
+  align-self: flex-start;
+}
+
+#editor-options .hint {
+  margin: 0;
+  color: var(--muted);
+}
+
+#editor-options .swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+#editor-options .swatches button {
+  color: var(--text);
+  background: var(--quiet-button);
+  border: 2px solid transparent;
+}
+
+#editor-options .swatches button.active {
+  border-color: var(--accent);
+}
+
+#editor-options .swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  border-radius: 2px;
+}
+
+#editor-status {
+  top: auto;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  min-height: 32px;
+  padding: 6px 10px;
+  line-height: 20px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+#editor-new-dialog {
+  color: var(--text);
+  background: rgba(16, 32, 20, 0.97);
+  border: none;
+  border-radius: 14px;
+  padding: 24px 28px;
+  max-width: min(420px, calc(100% - 32px));
+}
+
+#editor-new-dialog::backdrop {
+  background: rgba(8, 20, 10, 0.55);
+}
+
+#editor-new-dialog h2 {
+  margin: 0 0 8px;
+  color: var(--accent);
+}
+
+#editor-new-dialog .note {
+  color: var(--muted);
+}
+
+#editor-new-dialog .fields,
+#editor-new-dialog .actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 10px 0;
 }

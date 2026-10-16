@@ -142,6 +142,8 @@ A top-down 2D canvas, available in all builds.
 - **Level settings:** name, par, wind list.
 - **New level:** choose a size, then blank (flat rough, tee and cup at either end) or from random.
 - **Play test:** drops into 3D at the tee; Esc returns to the editor.
+- **Exit** returns to the level list and keeps the level open, so the Editor button picks up where you left off. **New…** and **Open…** ask before discarding unsaved changes.
+- Heights are kept to the millimetre while editing, as files store them, so a saved level plays exactly as play-tested.
 
 ## Game flow
 
@@ -154,4 +156,4 @@ Each step leaves the game playable.
 1. **Level data and loading.** ✅ Define the level data type, make `Level` build from data, and make the generator produce data. The random hole keeps working through the new path. This also brought in grid lookups, the line of play, painted OOB and water regions, since a level built from data needs them to play.
 2. **Gameplay on the grid.** ✅ Wind zones and blending, deterministic canopy.
 3. **Files and folders.** ✅ JSON encode/decode with gzipped grids, the `levels/` folders plus `.gitignore` entry, `import.meta.glob` loading, start screen, Open file.
-4. **Editor.** Canvas and navigation → terrain brushes → surface paint → markers → objects → wind and water tools → undo/redo → play test.
+4. **Editor.** ✅ Canvas and navigation → terrain brushes → surface paint → markers → objects → wind and water tools → undo/redo → play test.

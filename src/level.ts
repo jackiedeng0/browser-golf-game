@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GRID_STEP, gridSize, type LevelData } from './levelData';
+import { GRID_STEP, gridSize, nearestIndex, waterRegions, type LevelData } from './levelData';
 import { mulberry32, Noise2D } from './noise';
 import { OBJECT_TYPES, type ObjectDef } from './objects';
 import { SURFACE_LIST, SURFACES, surfaceId, type Surface } from './surfaces';
@@ -21,8 +21,6 @@ export const TILE_SIZE = TILE_CELLS * GRID_STEP;
 const TREE_CELL = 10;
 /** Floats stored per tree in `trees`: x, z, ground y, trunk radius, trunk top y, canopy center y, canopy radius. */
 export const TREE_STRIDE = 7;
-/** Water with no level given fills to this far (m) below the lowest ground around it. */
-const WATER_BELOW_SHORE = 0.1;
 /** Out-of-bounds terrain is drawn this far (m) past playable ground, then left out. */
 const OOB_DRAW_MARGIN = 16;
 /** Wind changes from one zone's to the next's over about this distance (m) across their border. */
@@ -63,7 +61,7 @@ export class Level {
   /** Water region of each grid point, or -1 where there's no water. */
   private readonly waterRegion: Int32Array;
   /** Surface height of each water region. */
-  private readonly regionLevels: number[] = [];
+  private readonly regionLevels: number[];
   /** Tee, line of play, cup as flattened (x, z) pairs. */
   private readonly route: Float32Array;
   /** Distance along the route at each of its points. */
@@ -125,7 +123,7 @@ export class Level {
     this.windField = this.blendWindZones(g.wind, winds);
     this.windAt(this.hole.x, this.hole.y, this.flagWind);
 
-    this.waterRegion = this.findWaterRegions(data.waterLevels);
+    ({ region: this.waterRegion, levels: this.regionLevels } = waterRegions(data));
     this.trees = this.placeObjects(data);
 
     this.group.add(this.buildTerrain());
@@ -284,58 +282,8 @@ export class Level {
     return { i: row * this.cols + col, fx: gx - col, fz: gz - row };
   }
 
-  /** Index of the grid point nearest (x, z), clamped to the map. */
   private nearest(x: number, z: number): number {
-    const col = clamp(Math.round(x / GRID_STEP), 0, this.cols - 1);
-    const row = clamp(Math.round(z / GRID_STEP), 0, this.rows - 1);
-    return row * this.cols + col;
-  }
-
-  /**
-   * Labels each connected (4-neighbor) patch of water and gives it the level of the first
-   * seed point inside it, or else fills it to just below the lowest ground around it.
-   */
-  private findWaterRegions(seeds: LevelData['waterLevels']): Int32Array {
-    const { cols, rows } = this;
-    const water = surfaceId('water');
-    const region = new Int32Array(cols * rows).fill(-1);
-    const stack: number[] = [];
-    for (let start = 0; start < region.length; start++) {
-      if (this.surfaces[start] !== water || region[start] >= 0) continue;
-      const id = this.regionLevels.length;
-      let shore = Infinity;
-      region[start] = id;
-      stack.push(start);
-      while (stack.length > 0) {
-        const i = stack.pop()!;
-        const col = i % cols;
-        const row = (i - col) / cols;
-        for (const [ok, j] of [
-          [col > 0, i - 1],
-          [col < cols - 1, i + 1],
-          [row > 0, i - cols],
-          [row < rows - 1, i + cols],
-        ] as const) {
-          if (!ok) continue;
-          if (this.surfaces[j] !== water) shore = Math.min(shore, this.heights[j]);
-          else if (region[j] < 0) {
-            region[j] = id;
-            stack.push(j);
-          }
-        }
-      }
-      this.regionLevels.push(Number.isFinite(shore) ? shore - WATER_BELOW_SHORE : this.heights[start]);
-    }
-    const seeded = new Set<number>();
-    for (const s of seeds) {
-      const id = region[this.nearest(s.x, s.z)];
-      if (id < 0) console.warn(`Water level at (${s.x}, ${s.z}) isn't on water, ignored`);
-      else if (!seeded.has(id)) {
-        this.regionLevels[id] = s.level;
-        seeded.add(id);
-      }
-    }
-    return region;
+    return nearestIndex(this.cols, this.rows, x, z);
   }
 
   /**

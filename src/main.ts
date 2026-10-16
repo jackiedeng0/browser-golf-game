@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import './style.css';
+import { Editor } from './editor';
 import { BALL_RADIUS, Level } from './level';
 import type { LevelData } from './levelData';
 import { decodeLevel } from './levelFile';
@@ -212,6 +213,8 @@ let level!: Level;
 let ball!: Ball;
 let strokes = 0;
 let loading = false;
+/** True while play-testing from the editor: leaving the hole goes back to it. */
+let fromEditor = false;
 let state: State = 'ready';
 let clubIndex = 0;
 let wonTimer = -1;
@@ -245,9 +248,11 @@ function replayHole(): void {
 }
 
 /** Loads a level and starts playing it. Building one takes a moment, so show a message first. */
-async function playLevel(load: () => Promise<LevelData>): Promise<void> {
+async function playLevel(load: () => Promise<LevelData>, testing = false): Promise<void> {
   if (loading) return;
   loading = true;
+  fromEditor = testing;
+  for (const id of ['menu', 'result-menu']) $(id).textContent = testing ? 'Editor' : 'Levels';
   hud.startError.hidden = true;
   hud.loading.hidden = false;
   try {
@@ -267,18 +272,44 @@ async function playLevel(load: () => Promise<LevelData>): Promise<void> {
     hud.root.hidden = false;
     startHole();
   } catch (err) {
-    hud.startError.textContent = errorMessage(err);
-    hud.startError.hidden = false;
+    if (testing) {
+      alert(`Couldn't play this level: ${errorMessage(err)}`);
+      editor.show();
+    } else {
+      hud.startError.textContent = errorMessage(err);
+      hud.startError.hidden = false;
+    }
   } finally {
     hud.loading.hidden = true;
     loading = false;
   }
 }
 
+/** Leaves the hole: back to the editor when play-testing, otherwise to the level list. */
+function leaveHole(): void {
+  hud.result.hidden = true;
+  if (fromEditor) {
+    fromEditor = false;
+    hud.root.hidden = true;
+    editor.show();
+  } else {
+    showLevelList();
+  }
+}
+
 function showLevelList(): void {
   hud.result.hidden = true;
+  hud.root.hidden = true;
   hud.start.hidden = false;
 }
+
+const editor = new Editor({
+  playTest: (data) => {
+    editor.hide();
+    playLevel(async () => data, true);
+  },
+  exit: showLevelList,
+});
 
 function fillLevelList(): void {
   const entries = listLevels();
@@ -502,13 +533,15 @@ canvas.addEventListener(
 );
 
 window.addEventListener('keydown', (e) => {
-  // The level list covers the game; keys don't reach it.
-  if (!hud.start.hidden) return;
+  // The level list and the editor cover the game; keys don't reach it.
+  if (!hud.start.hidden || editor.visible) return;
   const key = e.key.toLowerCase();
   if (key === 'escape' && state === 'aiming') {
     state = 'ready';
     drag.mode = null;
     drag.pointerId = -1;
+  } else if (key === 'escape' && fromEditor && !loading) {
+    leaveHole();
   } else if (key === 'c' && (state === 'ready' || state === 'aiming')) {
     clubIndex = (clubIndex + 1) % CLUBS.length;
   } else if (key === 'enter' && state === 'won' && !hud.result.hidden) {
@@ -517,9 +550,13 @@ window.addEventListener('keydown', (e) => {
   }
 });
 
-$('menu').addEventListener('click', showLevelList);
+$('menu').addEventListener('click', leaveHole);
 $('result-again').addEventListener('click', replayHole);
-$('result-menu').addEventListener('click', showLevelList);
+$('result-menu').addEventListener('click', leaveHole);
+$('editor-start').addEventListener('click', () => {
+  hud.start.hidden = true;
+  editor.show();
+});
 $('open-file').addEventListener('click', () => hud.fileInput.click());
 hud.fileInput.addEventListener('change', () => {
   const file = hud.fileInput.files?.[0];
@@ -735,8 +772,8 @@ function frame(now: number): void {
   lastTime = now;
   const time = now / 1000;
   requestAnimationFrame(frame);
-  // Nothing to draw until a level has been chosen.
-  if (!level) return;
+  // Nothing to draw until a level has been chosen, or while the editor covers the game.
+  if (!level || editor.visible) return;
 
   if (ball.moving) {
     const event = ball.update(dt);
