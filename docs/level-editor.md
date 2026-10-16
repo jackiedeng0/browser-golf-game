@@ -73,7 +73,7 @@ A generic list, so obstacles other than trees can be added later:
 
 ### Out of bounds
 
-The ball is out of bounds on painted `oob` cells or anywhere outside the map rectangle.
+The ball is out of bounds if it comes to rest on painted `oob` cells, or the moment it leaves the map rectangle. It can fly or roll across `oob` ground and still finish in play.
 
 ## File format
 

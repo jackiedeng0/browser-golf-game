@@ -188,9 +188,14 @@ export class Level {
     return region < 0 ? NaN : this.regionLevels[region];
   }
 
-  /** Out of bounds on painted out-of-bounds ground and anywhere off the map. */
+  /** True outside the map's rectangle, x ∈ [0, width] and z ∈ [0, length]. A ball there is out even while moving. */
+  isOffMap(x: number, z: number): boolean {
+    return x < 0 || z < 0 || x > this.width || z > this.length;
+  }
+
+  /** Whether a ball at rest at (x, z) is out: on painted out-of-bounds ground or off the map. */
   isOutOfBounds(x: number, z: number): boolean {
-    return x < 0 || z < 0 || x > this.width || z > this.length || this.surfaceAt(x, z) === 'oob';
+    return this.isOffMap(x, z) || this.surfaceAt(x, z) === 'oob';
   }
 
   /** Distance left to play: along the line of play, or straight at the pin once that's longer (e.g. near the green). */

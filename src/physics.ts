@@ -180,26 +180,27 @@ export class Ball {
       this.moving = false;
       return 'water';
     }
-    if (L.isOutOfBounds(p.x, p.z)) {
+    // Leaving the map ends the shot at once; out-of-bounds ground only counts where the ball stops.
+    if (L.isOffMap(p.x, p.z)) {
       this.moving = false;
       return 'out';
     }
     if (contact) {
       const pull = _g.length() * ROLLING_FACTOR;
       const hold = ground.surface.rolling * GRAVITY * _n.y;
-      if (!skidding && v.length() < STOP_SPEED && pull < hold) {
-        v.set(0, 0, 0);
-        this.spin.set(0, 0, 0);
-        this.moving = false;
-        return 'stopped';
-      }
+      if (!skidding && v.length() < STOP_SPEED && pull < hold) return this.rest();
     }
-    if (this.shotTime > MAX_SHOT_TIME) {
-      v.set(0, 0, 0);
-      this.moving = false;
-      return 'stopped';
-    }
+    if (this.shotTime > MAX_SHOT_TIME) return this.rest();
     return null;
+  }
+
+  /** Brings the ball to rest: in play, or out if it stopped on out-of-bounds ground. */
+  private rest(): BallEvent {
+    const p = this.position;
+    this.velocity.set(0, 0, 0);
+    this.spin.set(0, 0, 0);
+    this.moving = false;
+    return this.level.isOutOfBounds(p.x, p.z) ? 'out' : 'stopped';
   }
 
   /** Supporting surface directly below (x, z); over the cup that's the cup floor. */
