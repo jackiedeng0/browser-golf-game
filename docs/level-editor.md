@@ -51,7 +51,7 @@ Water is painted `water` cells. Each connected water region has its own surface 
 
 ### Wind
 
-`winds` is a list of `{ speed, direction }` entries with fixed values. Entry 0 is the global default, and painted wind-zone ids point into the list. The ball feels the wind at its current position, blended over about 10 m across zone borders so there are no mid-air kinks. The HUD shows the wind at the ball.
+`winds` is a list of `{ speed, direction }` entries with fixed values. Entry 0 is the global default, and painted wind-zone ids point into the list. The ball feels the wind at its current position, blended over about 10 m across zone borders so there are no mid-air kinks. The HUD shows the wind at the ball. Because of the blend, a zone narrower than about 10 m (or the tip of a sharp corner) never reaches its full wind.
 
 ### Objects
 
@@ -152,6 +152,6 @@ Start screen → level list (official, then user) · **Open file…** · **Edito
 Each step leaves the game playable.
 
 1. **Level data and loading.** ✅ Define the level data type, make `Level` build from data, and make the generator produce data. The random hole keeps working through the new path. This also brought in grid lookups, the line of play, painted OOB and water regions, since a level built from data needs them to play.
-2. **Gameplay on the grid.** Wind zones and blending, deterministic canopy.
+2. **Gameplay on the grid.** ✅ Wind zones and blending, deterministic canopy.
 3. **Files and folders.** JSON encode/decode with gzipped grids, the `levels/` folders plus `.gitignore` entry, `import.meta.glob` loading, start screen, Open file.
 4. **Editor.** Canvas and navigation → terrain brushes → surface paint → markers → objects → wind and water tools → undo/redo → play test.

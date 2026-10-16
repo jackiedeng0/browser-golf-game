@@ -540,9 +540,16 @@ function updateAimVisuals(time: number): void {
   hud.dragLine.setAttribute('y2', String(aim.pointerY));
 }
 
+const _ballWind = new THREE.Vector3();
+
+/** Wind where the ball is, which is what the HUD shows. */
+function ballWind(): THREE.Vector3 {
+  return level.windAt(ball.position.x, ball.position.z, _ballWind);
+}
+
 /** Describes the wind relative to the line the camera turns to after each shot (down the fairway). */
 function windRelativeLabel(): string {
-  const w = level.wind;
+  const w = ballWind();
   const speed = w.length();
   if (speed < 0.5) return 'Calm';
   const t = targetAhead();
@@ -559,7 +566,7 @@ function windRelativeLabel(): string {
 }
 
 function updateWindIndicator(): void {
-  const w = level.wind;
+  const w = ballWind();
   // Rotate so "up" on the dial is the camera's view direction.
   const fx = -Math.sin(rig.yaw);
   const fz = -Math.cos(rig.yaw);

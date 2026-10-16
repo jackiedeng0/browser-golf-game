@@ -25,6 +25,8 @@ export const TREE_STRIDE = 7;
 const WATER_BELOW_SHORE = 0.1;
 /** Out-of-bounds terrain is drawn this far (m) past playable ground, then left out. */
 const OOB_DRAW_MARGIN = 16;
+/** Wind changes from one zone's to the next's over about this distance (m) across their border. */
+const WIND_BLEND = 10;
 
 const clamp = (x: number, a: number, b: number) => Math.min(b, Math.max(a, x));
 
@@ -52,8 +54,6 @@ export class Level {
   readonly rimY: number;
   /** Length of the hole along the line of play. */
   readonly distance: number;
-  /** Constant wind velocity for this hole (m/s, horizontal). */
-  readonly wind: THREE.Vector3;
   readonly group = new THREE.Group();
 
   private readonly cols: number;
@@ -68,6 +68,12 @@ export class Level {
   private readonly route: Float32Array;
   /** Distance along the route at each of its points. */
   private readonly routeS: Float32Array;
+  /** Wind (m/s) where no zone is painted. */
+  private readonly defaultWind: THREE.Vector3;
+  /** Wind at each grid point as (x, z) pairs, blended across zone borders; null when no zones are painted. */
+  private readonly windField: Float32Array | null;
+  /** Wind at the cup, which the flag shows. */
+  private readonly flagWind = new THREE.Vector3();
   /** Without a line of play, the camera aims straight at the pin. */
   private readonly hasLineOfPlay: boolean;
   private readonly flag: THREE.Mesh;
@@ -111,9 +117,13 @@ export class Level {
     }
     this.distance = this.routeS[points.length - 1];
 
-    const w = data.winds[0] ?? { speed: 0, direction: 0 };
-    const angle = (w.direction * Math.PI) / 180;
-    this.wind = new THREE.Vector3(Math.cos(angle) * w.speed, 0, Math.sin(angle) * w.speed);
+    const winds = data.winds.map((w) => {
+      const angle = (w.direction * Math.PI) / 180;
+      return new THREE.Vector3(Math.cos(angle) * w.speed, 0, Math.sin(angle) * w.speed);
+    });
+    this.defaultWind = winds[0] ?? new THREE.Vector3();
+    this.windField = this.blendWindZones(g.wind, winds);
+    this.windAt(this.hole.x, this.hole.y, this.flagWind);
 
     this.waterRegion = this.findWaterRegions(data.waterLevels);
     this.trees = this.placeObjects(data);
@@ -159,6 +169,17 @@ export class Level {
   /** Surface painted at the nearest grid point. */
   surfaceAt(x: number, z: number): Surface {
     return SURFACE_LIST[this.surfaces[this.nearest(x, z)]];
+  }
+
+  /** Wind velocity (m/s, horizontal) at (x, z), interpolated between grid points. */
+  windAt(x: number, z: number, out: THREE.Vector3): THREE.Vector3 {
+    const f = this.windField;
+    if (!f) return out.copy(this.defaultWind);
+    const { i, fx, fz } = this.cell(x, z);
+    const j = i + this.cols;
+    const lerp2 = (k: number) =>
+      (f[i * 2 + k] * (1 - fx) + f[i * 2 + 2 + k] * fx) * (1 - fz) + (f[j * 2 + k] * (1 - fx) + f[j * 2 + 2 + k] * fx) * fz;
+    return out.set(lerp2(0), 0, lerp2(1));
   }
 
   /** Height of the water surface if (x, z) is in water, otherwise NaN. */
@@ -210,7 +231,7 @@ export class Level {
 
     const pos = this.flag.geometry.getAttribute('position') as THREE.BufferAttribute;
     const rest = this.flagRest;
-    const strength = Math.min(1, this.wind.length() / 6);
+    const strength = Math.min(1, this.flagWind.length() / 6);
     const amp = 0.03 + 0.08 * strength;
     const t = time * (3 + 5 * strength);
     for (let i = 0; i < pos.count; i++) {
@@ -310,6 +331,53 @@ export class Level {
       }
     }
     return region;
+  }
+
+  /**
+   * Each grid point's zone wind, box-blurred WIND_BLEND wide so it ramps evenly from one zone
+   * to the next. Null when nothing but the default zone is painted.
+   */
+  private blendWindZones(zones: Uint8Array, winds: THREE.Vector3[]): Float32Array | null {
+    if (zones.every((id) => id === 0)) return null;
+    const missing = new Set<number>();
+    const field = new Float32Array(zones.length * 2);
+    for (let i = 0; i < zones.length; i++) {
+      let w = winds[zones[i]];
+      if (!w) {
+        missing.add(zones[i]);
+        w = this.defaultWind;
+      }
+      field[i * 2] = w.x;
+      field[i * 2 + 1] = w.z;
+    }
+    if (missing.size > 0) console.warn(`Wind zones ${[...missing].join(', ')} have no wind entry; using the default`);
+
+    // Separable box blur, extending the map's edges outward.
+    const radius = Math.round(WIND_BLEND / 2 / GRID_STEP);
+    const { cols, rows } = this;
+    /** Blurs each of `lines` runs of `count` points, where point k of run `l` is grid point `pointAt(l, k)`. */
+    const blur = (count: number, lines: number, pointAt: (l: number, k: number) => number) => {
+      const run = new Float32Array(count * 2);
+      const at = (k: number) => clamp(k, 0, count - 1) * 2;
+      for (let l = 0; l < lines; l++) {
+        for (let k = 0; k < count; k++) run.set(field.subarray(pointAt(l, k) * 2, pointAt(l, k) * 2 + 2), k * 2);
+        let sumX = 0;
+        let sumZ = 0;
+        for (let k = -radius; k <= radius; k++) {
+          sumX += run[at(k)];
+          sumZ += run[at(k) + 1];
+        }
+        for (let k = 0; k < count; k++) {
+          field[pointAt(l, k) * 2] = sumX / (2 * radius + 1);
+          field[pointAt(l, k) * 2 + 1] = sumZ / (2 * radius + 1);
+          sumX += run[at(k + radius + 1)] - run[at(k - radius)];
+          sumZ += run[at(k + radius + 1) + 1] - run[at(k - radius) + 1];
+        }
+      }
+    };
+    blur(cols, rows, (row, col) => row * cols + col);
+    blur(rows, cols, (col, row) => row * cols + col);
+    return field;
   }
 
   // --- Line of play ------------------------------------------------------------
@@ -631,8 +699,8 @@ export class Level {
     );
     flag.position.set(this.hole.x, this.rimY - CUP_DEPTH + PIN_HEIGHT - 0.36, this.hole.y);
     // Point the flag downwind; in light air it droops toward the pole.
-    const droop = (1 - Math.min(1, this.wind.length() / 5)) * 1.1;
-    flag.rotation.set(0, Math.atan2(-this.wind.z, this.wind.x), -droop);
+    const droop = (1 - Math.min(1, this.flagWind.length() / 5)) * 1.1;
+    flag.rotation.set(0, Math.atan2(-this.flagWind.z, this.flagWind.x), -droop);
     flag.castShadow = true;
     this.group.add(flag);
     return flag;

@@ -34,9 +34,8 @@ type Contact = Omit<SurfaceProps, 'color'>;
 const CUP: Contact = { restitution: 0.2, friction: 0.6, rolling: 0.5 };
 const PIN: Contact = { restitution: 0.45, friction: 0.15, rolling: 0 };
 const TRUNK: Contact = { restitution: 0.45, friction: 0.3, rolling: 0 };
-/** Inside a tree's canopy the ball loses speed at this rate (1/s) and is knocked off line. */
+/** Inside a tree's canopy the ball loses speed at this rate (1/s). */
 const CANOPY_DRAG = 3.5;
-const CANOPY_SCATTER = 6;
 
 export type BallEvent = 'stopped' | 'sunk' | 'out' | 'water';
 
@@ -47,6 +46,7 @@ const _t = new THREE.Vector3();
 const _g = new THREE.Vector3();
 const _s = new THREE.Vector3();
 const _w = new THREE.Vector3();
+const _wind = new THREE.Vector3();
 const _q = new THREE.Quaternion();
 
 export class Ball {
@@ -113,6 +113,7 @@ export class Ball {
     this.shotTime += h;
 
     const ground = this.groundAt(p.x, p.z, _n);
+    const wind = L.windAt(p.x, p.z, _wind);
     const contact = p.y - BALL_RADIUS <= ground.y + CONTACT_EPS;
 
     let skidding = false;
@@ -121,7 +122,7 @@ export class Ball {
       if (vn < 0) v.addScaledVector(_n, -vn);
       // Driving force along the surface: slope gravity, g - (g·n)n, plus a slight push from the wind.
       _g.set(0, -GRAVITY, 0).addScaledVector(_n, GRAVITY * _n.y);
-      _t.copy(L.wind).multiplyScalar(GROUND_WIND).sub(v);
+      _t.copy(wind).multiplyScalar(GROUND_WIND).sub(v);
       _g.addScaledVector(_t, AIR_DRAG * _t.length());
       _g.addScaledVector(_n, -_g.dot(_n));
 
@@ -145,7 +146,7 @@ export class Ball {
       this.spin.multiplyScalar(1 - h / SPIN_DECAY_TIME);
       v.y -= GRAVITY * h;
       // Drag and lift act on the velocity relative to the moving air, which is how wind moves the ball.
-      _g.subVectors(v, L.wind);
+      _g.subVectors(v, wind);
       const airSpeed = _g.length();
       _t.crossVectors(UP, _g);
       _c.crossVectors(_g, _t);
@@ -264,7 +265,7 @@ export class Ball {
     }
   }
 
-  /** Trunks are solid; canopies (approximated as spheres) slow the ball and scatter it. */
+  /** Trunks are solid; canopies (approximated as spheres) slow the ball. */
   private collideTrees(h: number): void {
     const L = this.level;
     const p = this.position;
@@ -283,13 +284,7 @@ export class Ball {
       }
       const cy = p.y - t[o + 5];
       const r = t[o + 6];
-      if (dx * dx + dz * dz + cy * cy < r * r) {
-        const speed = v.length();
-        v.multiplyScalar(Math.exp(-CANOPY_DRAG * h));
-        v.x += (Math.random() - 0.5) * speed * CANOPY_SCATTER * h;
-        v.y += (Math.random() - 0.5) * speed * CANOPY_SCATTER * h;
-        v.z += (Math.random() - 0.5) * speed * CANOPY_SCATTER * h;
-      }
+      if (dx * dx + dz * dz + cy * cy < r * r) v.multiplyScalar(Math.exp(-CANOPY_DRAG * h));
     }
   }
 
