@@ -32,9 +32,10 @@ The game runs entirely in the browser with no backend, so you can host the conte
 | Zoom | Scroll wheel |
 | Change club | `C` (Driver → Iron → Wedge → Putter) |
 | Choose a level | The **Levels** button, or **Play again** / **Levels** when you hole out (`Enter` plays again) |
+| Back to the editor | `Esc` or the **Editor** button, when play-testing |
 | Cancel a shot | `Esc` while aiming |
 
-- **Pin marker:** the marker level with the wind dial shows the distance left to play (along the fairway) and how far the cup is above or below the ball (e.g. `↑ 2.4 m`). It slides to sit over the pin. When the pin is outside its range, it shows an arrow and how far to turn, e.g. `◀ 62°`.
+- **Pin marker:** the marker level with the wind dial shows the distance left to play (along the line of play) and how far the cup is above or below the ball (e.g. `↑ 2.4 m`). It slides to sit over the pin. When the pin is outside its range, it shows an arrow and how far to turn, e.g. `◀ 62°`.
 - **Camera:** after each shot the camera turns to face a point about 180 m along the hole's line of play, or the pin when that's closer or the level has no line of play.
 - The game picks a club for you from your lie and distance to the pin; press `C` to change it.
 - **Target line:** the dashed line from the ball shows the direction the camera faces. Aiming off it shapes the shot: an arrow pointing right is an in-to-out path and draws (curves left), and pointing left fades. The power bar names the shape, e.g. *Slight draw* or *Max fade*. The arrow stops turning at the 48° limit. To aim somewhere new, turn the camera. The putter has no sidespin and can aim anywhere.
@@ -69,12 +70,12 @@ A top-down map of the level, shaded by height with 1 m contour lines (stronger e
 | Undo / redo | `Ctrl+Z` / `Ctrl+Shift+Z` (or `Ctrl+Y`), or the buttons |
 
 - **Terrain:** Raise, Lower, Smooth, Flatten (to the height where the stroke starts) and Set height (to a typed height). Radius, strength and falloff set the brush.
-- **Paint:** Surface (tee, fairway, green, rough, bunker, water, out of bounds) and Wind zone. Painting never changes the ground's height, so sculpt bunkers and ponds yourself. The wind zone tool also edits each zone's speed and direction; *Default* blows wherever no zone is painted.
+- **Paint:** Surface (tee, fairway, green, rough, bunker, water, out of bounds) and Wind zone. Painting never changes the ground's height, so sculpt bunkers and ponds yourself. The wind zone tool also edits each zone's speed and direction, adds zones and removes the last one; *Default* blows wherever no zone is painted.
 - **Water level:** paint water, lower the ground under it, then click it with this tool to set where its surface sits. Water with no level set fills to just below its lowest bank.
 - **Markers:** drag the tee or cup. The line of play guides the camera and the distance readout from tee to cup: click to add a point, drag to move one, Shift-click to delete.
 - **Objects:** place, move, rotate (drag around the object) and delete trees, or scatter them with a brush; density sets how close together they grow.
 - **Name and par** are in the top bar.
-- **New…** makes a blank level of a chosen size, or starts from a random hole. **Open…** loads a level file, **Save** downloads one; move it into `levels/user/` (or `levels/official/`) to list it. **Play test** plays the level in 3D; `Esc` or the **Editor** button comes back. **Exit** keeps the level open for next time.
+- **New…** makes a blank level of a chosen size, or starts from a random hole (which picks its own size). **Open…** loads a level file, **Save** downloads one; move it into `levels/user/` to list it as yours, or `levels/official/` to make it an official level. **Play test** plays the level in 3D; `Esc` or the **Editor** button comes back. **Exit** keeps the level open for next time.
 
 ### Random holes
 
