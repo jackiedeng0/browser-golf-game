@@ -20,14 +20,33 @@ function play(level: Level, speed = 30, loft = 0.3): THREE.Vector3 {
   return ball.position.clone();
 }
 
+/** Round crowns low enough to catch a 30 m/s shot from the tee early in its flight. */
+const canopies = [170, 160, 150, 140].map((z) => ({ type: 'tree-oak', x: 30.5, z, y: -4, rotation: 0, scale: 1.5 }));
+
 describe('ball physics', () => {
   test('a shot through tree canopies lands in exactly the same place every time', () => {
-    const objects = [170, 160, 150, 140].map((z) => ({ type: 'tree-oak', x: 30.5, z, y: -4, rotation: 0, scale: 1.5 }));
-    const level = flatLevel({ objects });
+    const level = flatLevel({ objects: canopies });
     const first = play(level);
     // The ball did go through a canopy: it falls short of the same shot with no trees.
     expect(first.z).toBeGreaterThan(play(flatLevel()).z + 1);
     for (let i = 0; i < 5; i++) expect(play(level).toArray()).toEqual(first.toArray());
+  });
+
+  test('tree canopies take spin off the ball as well as speed', () => {
+    // Backspin and a draw, checked 2 s into the flight: with the trees the ball has been in a
+    // crown since about 0.7 s, and it's still in the air either way.
+    const spinAfterTrees = (level: Level) => {
+      const ball = new Ball(level);
+      ball.strike(new THREE.Vector3(0, 0, -1), 30, 0.3, 120, 20);
+      for (let i = 0; i < 120; i++) ball.update(1 / 60);
+      expect(ball.position.y).toBeGreaterThan(1);
+      return ball.spin.clone();
+    };
+    const open = spinAfterTrees(flatLevel());
+    const trees = spinAfterTrees(flatLevel({ objects: canopies }));
+    expect(trees.length()).toBeLessThan(open.length() * 0.8);
+    // Both kinds of spin are reduced, so the draw curves less too.
+    expect(Math.abs(trees.y)).toBeLessThan(Math.abs(open.y) * 0.8);
   });
 
   test('the ball feels the wind of the zone it is in, not elsewhere', () => {

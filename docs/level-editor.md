@@ -120,7 +120,7 @@ The terrain mesh vertices are the grid points. Colour comes from vertex colours 
 
 - Height, normal, surface and out-of-bounds lookups read the grid instead of the procedural functions.
 - Wind is looked up per position (see Wind).
-- **Canopy scatter randomness is removed** (`Math.random()` in `src/physics.ts`). Canopies apply deterministic drag only.
+- **Canopy scatter randomness is removed** (`Math.random()` in `src/physics.ts`). Canopies apply deterministic drag only, to both the ball's speed and its spin.
 - Physics already uses a fixed timestep with an accumulator, so that stays as it is.
 
 ## Procedural generator

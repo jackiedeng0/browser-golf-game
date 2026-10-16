@@ -36,6 +36,8 @@ const PIN: Contact = { restitution: 0.45, friction: 0.15, rolling: 0 };
 const TRUNK: Contact = { restitution: 0.45, friction: 0.3, rolling: 0 };
 /** Inside a tree's canopy the ball loses speed at this rate (1/s). */
 const CANOPY_DRAG = 3.5;
+/** ...and spin at this rate (1/s): the same, so backspin and curve stay in proportion to its speed. */
+const CANOPY_SPIN_DRAG = CANOPY_DRAG;
 
 export type BallEvent = 'stopped' | 'sunk' | 'out' | 'water';
 
@@ -265,7 +267,7 @@ export class Ball {
     }
   }
 
-  /** Trunks are solid; canopies (approximated as spheres) slow the ball. */
+  /** Trunks are solid; canopies (approximated as spheres) slow the ball and take spin off it. */
   private collideTrees(h: number): void {
     const L = this.level;
     const p = this.position;
@@ -284,7 +286,10 @@ export class Ball {
       }
       const cy = p.y - t[o + 5];
       const r = t[o + 6];
-      if (dx * dx + dz * dz + cy * cy < r * r) v.multiplyScalar(Math.exp(-CANOPY_DRAG * h));
+      if (dx * dx + dz * dz + cy * cy < r * r) {
+        v.multiplyScalar(Math.exp(-CANOPY_DRAG * h));
+        this.spin.multiplyScalar(Math.exp(-CANOPY_SPIN_DRAG * h));
+      }
     }
   }
 
