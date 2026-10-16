@@ -17,6 +17,7 @@ Other scripts:
 npm run build    # typecheck and build a static site into dist/
 npm run preview  # serve the built site locally
 npm run typecheck
+npm test         # run the unit tests
 ```
 
 The game runs entirely in the browser with no backend, so you can host the contents of `dist/` on any static file host.

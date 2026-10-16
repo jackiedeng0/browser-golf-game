@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import './style.css';
-import { BALL_RADIUS, Level, type Surface } from './level';
+import { generateLevel } from './generator';
+import { BALL_RADIUS, Level } from './level';
+import type { Surface } from './surfaces';
 import { Ball } from './physics';
 
 interface Club {
@@ -42,6 +44,7 @@ const LIE_NAMES: Record<Surface, string> = {
   rough: 'Rough',
   bunker: 'Bunker',
   water: 'Water',
+  oob: 'Out of bounds',
 };
 /** Shots from sand come off slower and with extra spin. */
 const BUNKER_SPEED = 0.7;
@@ -195,7 +198,7 @@ scene.add(targetLine);
 
 type State = 'ready' | 'aiming' | 'flying' | 'won';
 
-let level = new Level(randomSeed());
+let level = new Level(generateLevel(randomSeed()));
 scene.add(level.group);
 const ball = new Ball(level);
 let strokes = 0;
@@ -241,7 +244,7 @@ function newHole(): void {
     requestAnimationFrame(() => {
       scene.remove(level.group);
       level.dispose();
-      level = new Level(randomSeed());
+      level = new Level(generateLevel(randomSeed()));
       scene.add(level.group);
       ball.setLevel(level);
       startHole();

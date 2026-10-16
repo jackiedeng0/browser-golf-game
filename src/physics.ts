@@ -1,15 +1,6 @@
 import * as THREE from 'three';
-import {
-  BALL_RADIUS,
-  CUP_DEPTH,
-  HOLE_RADIUS,
-  Level,
-  PIN_HEIGHT,
-  PIN_RADIUS,
-  SURFACES,
-  TREE_STRIDE,
-  type SurfaceProps,
-} from './level';
+import { BALL_RADIUS, CUP_DEPTH, HOLE_RADIUS, Level, PIN_HEIGHT, PIN_RADIUS, TREE_STRIDE } from './level';
+import { SURFACES, type SurfaceProps } from './surfaces';
 
 /** Slightly lower than Earth gravity. */
 export const GRAVITY = 9.81 * 0.8;
@@ -38,9 +29,11 @@ const SPIN_PER_IMPULSE = 5 / (2 * BALL_RADIUS);
 /** Visual spin is capped in flight so a fast-spinning ball doesn't strobe. */
 const MAX_VISUAL_AIR_SPIN = 25;
 
-const CUP: SurfaceProps = { restitution: 0.2, friction: 0.6, rolling: 0.5 };
-const PIN: SurfaceProps = { restitution: 0.45, friction: 0.15, rolling: 0 };
-const TRUNK: SurfaceProps = { restitution: 0.45, friction: 0.3, rolling: 0 };
+type Contact = Omit<SurfaceProps, 'color'>;
+
+const CUP: Contact = { restitution: 0.2, friction: 0.6, rolling: 0.5 };
+const PIN: Contact = { restitution: 0.45, friction: 0.15, rolling: 0 };
+const TRUNK: Contact = { restitution: 0.45, friction: 0.3, rolling: 0 };
 /** Inside a tree's canopy the ball loses speed at this rate (1/s) and is knocked off line. */
 const CANOPY_DRAG = 3.5;
 const CANOPY_SCATTER = 6;
@@ -207,7 +200,7 @@ export class Ball {
   }
 
   /** Supporting surface directly below (x, z); over the cup that's the cup floor. */
-  private groundAt(x: number, z: number, normal: THREE.Vector3): { y: number; surface: SurfaceProps } {
+  private groundAt(x: number, z: number, normal: THREE.Vector3): { y: number; surface: Contact } {
     const L = this.level;
     if (Math.hypot(x - L.hole.x, z - L.hole.y) < HOLE_RADIUS) {
       normal.copy(UP);
@@ -317,7 +310,7 @@ export class Ball {
   }
 
   /** Resolves an impact against a contact normal with restitution and Coulomb friction on the slip. */
-  private impact(n: THREE.Vector3, surface: SurfaceProps): void {
+  private impact(n: THREE.Vector3, surface: Contact): void {
     const v = this.velocity;
     const vn = v.dot(n);
     if (vn >= 0) return;

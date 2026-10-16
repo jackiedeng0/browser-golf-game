@@ -34,7 +34,7 @@ A single grid with **0.8 m spacing**. Its points are exactly the terrain mesh ve
 
 Lookups:
 
-- **Height** is bilinear interpolation of the four surrounding points, so slopes are smooth for physics and normals.
+- **Height** is interpolated across the same triangles the terrain mesh is drawn with (each cell split along one diagonal), so the ball plays on exactly the surface you see.
 - **Surface** and **wind zone** come from the nearest point. With vertex-colour blending, the visual 50/50 edge falls at the same place the nearest-point switch happens, so what you see matches what the ball feels.
 
 Nothing is added at runtime: no noise and no auto-carving. The terrain is exactly what's stored.
@@ -47,7 +47,7 @@ Nothing is added at runtime: no noise and no auto-carving. The terrain is exactl
 
 ### Water
 
-Water is painted `water` cells. Each connected water region has its own surface level, so ponds on different terraces work. The heightmap holds the lake bed.
+Water is painted `water` cells. Each connected water region has its own surface level, so ponds on different terraces work. The heightmap holds the lake bed. A region with no level given fills to 0.1 m below the lowest ground around it.
 
 ### Wind
 
@@ -69,7 +69,7 @@ A generic list, so obstacles other than trees can be added later:
 ### Markers
 
 - **Tee** and **cup** positions, exactly one of each.
-- **Line of play** (optional): a few points from tee to pin. When present, it drives the camera's aim-ahead and the distance-remaining readout. Without it, both use the pin and straight-line distance.
+- **Line of play** (optional): a few points the hole bends through, between the tee and the pin (which aren't repeated in the list). When present, it drives the camera's aim-ahead and the distance-remaining readout. Without it, both use the pin and straight-line distance.
 
 ### Out of bounds
 
@@ -87,7 +87,7 @@ One `.json` file per level, with no version field.
   "length": 1400,        // metres
   "tee": { "x": 0, "z": 0 },
   "cup": { "x": -80, "z": 410 },
-  "lineOfPlay": [{ "x": 0, "z": 0 }, { "x": 10, "z": 250 }, { "x": -80, "z": 410 }],
+  "lineOfPlay": [{ "x": 10, "z": 250 }],
   "winds": [{ "speed": 3, "direction": 90 }, { "speed": 7, "direction": 120 }],
   "waterLevels": [{ "x": 40, "z": 300, "level": 12.5 }],  // one seed point per connected region
   "objects": [ /* see Objects */ ],
@@ -151,7 +151,7 @@ Start screen → level list (official, then user) · **Open file…** · **Edito
 
 Each step leaves the game playable.
 
-1. **Level data and loading.** Define the level data type, make `Level` build from data, and make the generator produce data. The random hole keeps working through the new path.
-2. **Gameplay on the grid.** Grid lookups, line of play, OOB, water regions, wind zones and blending, deterministic canopy.
+1. **Level data and loading.** ✅ Define the level data type, make `Level` build from data, and make the generator produce data. The random hole keeps working through the new path. This also brought in grid lookups, the line of play, painted OOB and water regions, since a level built from data needs them to play.
+2. **Gameplay on the grid.** Wind zones and blending, deterministic canopy.
 3. **Files and folders.** JSON encode/decode with gzipped grids, the `levels/` folders plus `.gitignore` entry, `import.meta.glob` loading, start screen, Open file.
 4. **Editor.** Canvas and navigation → terrain brushes → surface paint → markers → objects → wind and water tools → undo/redo → play test.
