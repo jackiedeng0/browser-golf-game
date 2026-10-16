@@ -224,8 +224,10 @@ class Generator {
     }
     const x0 = minX - MAP_MARGIN;
     const z0 = minZ - MAP_MARGIN;
-    const width = Math.ceil((maxX + MAP_MARGIN - x0) / GRID_STEP) * GRID_STEP;
-    const length = Math.ceil((maxZ + MAP_MARGIN - z0) / GRID_STEP) * GRID_STEP;
+    // Up to whole grid steps, rounded to 0.1 m to drop float noise (0.8 × n has one decimal place).
+    const toGrid = (extent: number) => Math.round(Math.ceil(extent / GRID_STEP) * GRID_STEP * 10) / 10;
+    const width = toGrid(maxX + MAP_MARGIN - x0);
+    const length = toGrid(maxZ + MAP_MARGIN - z0);
     const { cols, rows } = gridSize(width, length);
 
     const height = new Float32Array(cols * rows);

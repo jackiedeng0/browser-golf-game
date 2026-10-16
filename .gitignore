@@ -48,3 +48,7 @@ out/
 coverage/
 playwright-report/
 test-results/
+
+# Personal levels (official ones live in levels/official/)
+levels/user/*
+!levels/user/.gitkeep

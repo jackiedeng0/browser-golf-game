@@ -9,9 +9,9 @@
     <div id="app"></div>
     <svg id="aim-overlay" aria-hidden="true"><line id="drag-line" x1="0" y1="0" x2="0" y2="0" /></svg>
 
-    <div id="hud">
+    <div id="hud" hidden>
       <div class="panel" id="info">
-        <div class="title">Par <span id="par">10</span> · <span id="length">–</span> m</div>
+        <div class="title">Par <span id="par">–</span> · <span id="length">–</span> m</div>
         <dl>
           <dt>Strokes</dt><dd id="strokes">0</dd>
           <dt>Club</dt><dd id="club">–</dd>
@@ -20,7 +20,7 @@
         </dl>
       </div>
       <div class="top-right">
-        <button id="new-hole" type="button">New hole</button>
+        <button id="menu" type="button">Levels</button>
         <div class="panel" id="wind">
           <svg id="wind-dial" viewBox="-30 -30 60 60" aria-hidden="true">
             <circle class="dial" r="27" />
@@ -54,14 +54,38 @@
       </div>
     </div>
 
-    <div id="loading">Generating course…</div>
+    <div id="loading" hidden>Loading level…</div>
 
     <div id="result" hidden>
       <div class="card">
         <h2 id="result-title"></h2>
         <p id="result-detail"></p>
-        <button id="result-new" type="button">Play a new hole</button>
-        <small>or press Enter</small>
+        <div class="actions">
+          <button id="result-again" type="button">Play again</button>
+          <button id="result-menu" class="secondary" type="button">Levels</button>
+        </div>
+        <small>or press Enter to play again</small>
+      </div>
+    </div>
+
+    <div id="start">
+      <div class="card">
+        <h1>Claude Golf</h1>
+        <section>
+          <h2>Official levels</h2>
+          <ul id="official-levels" class="levels"></ul>
+        </section>
+        <section id="user-section" hidden>
+          <h2>Your levels</h2>
+          <ul id="user-levels" class="levels"></ul>
+          <p class="note">Level files in <code>levels/user/</code> show up here.</p>
+        </section>
+        <div class="actions">
+          <button id="open-file" class="secondary" type="button">Open file…</button>
+          <button id="editor" class="secondary" type="button" disabled>Editor (coming soon)</button>
+        </div>
+        <p id="start-error" role="alert" hidden></p>
+        <input id="file-input" type="file" accept=".json,application/json" hidden />
       </div>
     </div>
 

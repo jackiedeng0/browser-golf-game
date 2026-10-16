@@ -99,7 +99,7 @@ One `.json` file per level, with no version field.
 }
 ```
 
-The metadata stays readable. The grids are compressed with the browser's `CompressionStream('gzip')` and are only edited in the game, never by hand. Exact field names and encodings can change during implementation.
+The metadata stays readable. The grids are compressed with the browser's `CompressionStream('gzip')` and are only edited in the game, never by hand. Heights are stored to the millimetre, each as its difference from a prediction from its neighbors, which compresses about 4× smaller than raw floats. Exact field names and encodings can change during implementation.
 
 ## Storage
 
@@ -153,5 +153,5 @@ Each step leaves the game playable.
 
 1. **Level data and loading.** ✅ Define the level data type, make `Level` build from data, and make the generator produce data. The random hole keeps working through the new path. This also brought in grid lookups, the line of play, painted OOB and water regions, since a level built from data needs them to play.
 2. **Gameplay on the grid.** ✅ Wind zones and blending, deterministic canopy.
-3. **Files and folders.** JSON encode/decode with gzipped grids, the `levels/` folders plus `.gitignore` entry, `import.meta.glob` loading, start screen, Open file.
+3. **Files and folders.** ✅ JSON encode/decode with gzipped grids, the `levels/` folders plus `.gitignore` entry, `import.meta.glob` loading, start screen, Open file.
 4. **Editor.** Canvas and navigation → terrain brushes → surface paint → markers → objects → wind and water tools → undo/redo → play test.

@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 import './style.css';
-import { generateLevel } from './generator';
 import { BALL_RADIUS, Level } from './level';
+import type { LevelData } from './levelData';
+import { decodeLevel } from './levelFile';
+import { listLevels, listsUserLevels, type LevelEntry } from './levelLibrary';
 import type { Surface } from './surfaces';
 import { Ball } from './physics';
 
@@ -78,6 +80,13 @@ const hud = {
   result: $('result'),
   resultTitle: $('result-title'),
   resultDetail: $('result-detail'),
+  root: $('hud'),
+  start: $('start'),
+  officialLevels: $('official-levels'),
+  userSection: $('user-section'),
+  userLevels: $('user-levels'),
+  startError: $('start-error'),
+  fileInput: $<HTMLInputElement>('file-input'),
   dragLine: document.getElementById('drag-line') as unknown as SVGLineElement,
 };
 
@@ -198,11 +207,11 @@ scene.add(targetLine);
 
 type State = 'ready' | 'aiming' | 'flying' | 'won';
 
-let level = new Level(generateLevel(randomSeed()));
-scene.add(level.group);
-const ball = new Ball(level);
+// Both are set once the first level is chosen; nothing reads them before then.
+let level!: Level;
+let ball!: Ball;
 let strokes = 0;
-let generating = false;
+let loading = false;
 let state: State = 'ready';
 let clubIndex = 0;
 let wonTimer = -1;
@@ -212,10 +221,6 @@ const rig = { target: new THREE.Vector3(), yaw: 0, pitch: 0.3, distance: 8, yawG
 /** `path` is the signed angle of the shot from the target line; positive is right (in-to-out). */
 const aim = { pointerX: 0, pointerY: 0, power: 0, path: 0, dir: new THREE.Vector3() };
 const drag = { mode: null as 'aim' | 'orbit' | null, lastX: 0, lastY: 0, pointerId: -1 };
-
-function randomSeed(): number {
-  return (Math.random() * 2 ** 32) >>> 0;
-}
 
 function startHole(): void {
   lastRest.copy(level.tee);
@@ -231,26 +236,69 @@ function startHole(): void {
   autoSelectClub();
   hud.par.textContent = String(level.par);
   hud.length.textContent = Math.round(level.distance).toLocaleString();
-  hud.loading.hidden = true;
 }
 
-/** Generates a new hole. Building one takes most of a second, so show a message first. */
-function newHole(): void {
-  if (generating) return;
-  generating = true;
+/** Starts the current hole over from the tee. */
+function replayHole(): void {
+  ball.placeAt(level.tee);
+  startHole();
+}
+
+/** Loads a level and starts playing it. Building one takes a moment, so show a message first. */
+async function playLevel(load: () => Promise<LevelData>): Promise<void> {
+  if (loading) return;
+  loading = true;
+  hud.startError.hidden = true;
   hud.loading.hidden = false;
-  // Wait two frames so the message is painted before the main thread is busy.
-  requestAnimationFrame(() =>
-    requestAnimationFrame(() => {
+  try {
+    const data = await load();
+    // Wait two frames so the message is painted before the main thread is busy.
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const next = new Level(data);
+    if (level) {
       scene.remove(level.group);
       level.dispose();
-      level = new Level(generateLevel(randomSeed()));
-      scene.add(level.group);
-      ball.setLevel(level);
-      startHole();
-      generating = false;
-    }),
-  );
+    }
+    level = next;
+    scene.add(level.group);
+    if (ball) ball.setLevel(level);
+    else ball = new Ball(level);
+    hud.start.hidden = true;
+    hud.root.hidden = false;
+    startHole();
+  } catch (err) {
+    hud.startError.textContent = errorMessage(err);
+    hud.startError.hidden = false;
+  } finally {
+    hud.loading.hidden = true;
+    loading = false;
+  }
+}
+
+function showLevelList(): void {
+  hud.result.hidden = true;
+  hud.start.hidden = false;
+}
+
+function fillLevelList(): void {
+  const entries = listLevels();
+  const fill = (list: HTMLElement, source: LevelEntry['source']) => {
+    const mine = entries.filter((e) => e.source === source);
+    list.replaceChildren(
+      ...(mine.length === 0
+        ? [Object.assign(document.createElement('li'), { className: 'empty', textContent: 'No levels yet.' })]
+        : mine.map((entry) => {
+            const button = Object.assign(document.createElement('button'), { type: 'button', textContent: entry.title });
+            button.addEventListener('click', () => playLevel(entry.load));
+            const li = document.createElement('li');
+            li.append(button);
+            return li;
+          })),
+    );
+  };
+  fill(hud.officialLevels, 'official');
+  fill(hud.userLevels, 'user');
+  hud.userSection.hidden = !listsUserLevels;
 }
 
 /** Distance left to play, measured along the fairway. */
@@ -339,7 +387,7 @@ function showResult(): void {
   hud.resultTitle.textContent = strokes === 1 ? 'Hole in one!' : (names[String(diff)] ?? `${diff > 0 ? '+' : ''}${diff}`);
   hud.resultDetail.textContent = `${strokes} stroke${strokes === 1 ? '' : 's'} (${formatToPar(diff)}) on a ${Math.round(level.distance).toLocaleString()} m par ${level.par}.`;
   hud.result.hidden = false;
-  $('result-new').focus();
+  $('result-again').focus();
 }
 
 let toastTimer = 0;
@@ -454,6 +502,8 @@ canvas.addEventListener(
 );
 
 window.addEventListener('keydown', (e) => {
+  // The level list covers the game; keys don't reach it.
+  if (!hud.start.hidden) return;
   const key = e.key.toLowerCase();
   if (key === 'escape' && state === 'aiming') {
     state = 'ready';
@@ -461,14 +511,41 @@ window.addEventListener('keydown', (e) => {
     drag.pointerId = -1;
   } else if (key === 'c' && (state === 'ready' || state === 'aiming')) {
     clubIndex = (clubIndex + 1) % CLUBS.length;
-  } else if (key === 'n' || (key === 'enter' && state === 'won' && !hud.result.hidden)) {
+  } else if (key === 'enter' && state === 'won' && !hud.result.hidden) {
     e.preventDefault();
-    newHole();
+    replayHole();
   }
 });
 
-$('new-hole').addEventListener('click', newHole);
-$('result-new').addEventListener('click', newHole);
+$('menu').addEventListener('click', showLevelList);
+$('result-again').addEventListener('click', replayHole);
+$('result-menu').addEventListener('click', showLevelList);
+$('open-file').addEventListener('click', () => hud.fileInput.click());
+hud.fileInput.addEventListener('change', () => {
+  const file = hud.fileInput.files?.[0];
+  // Clear it so choosing the same file again still fires a change.
+  hud.fileInput.value = '';
+  if (file) playLevel(() => readLevelFile(file));
+});
+
+/** Reads a level from a file the player picked, naming the file in any error. */
+async function readLevelFile(file: File): Promise<LevelData> {
+  let json: unknown;
+  try {
+    json = JSON.parse(await file.text());
+  } catch {
+    throw new Error(`${file.name}: Not a level file (it isn't JSON)`);
+  }
+  try {
+    return await decodeLevel(json);
+  } catch (err) {
+    throw new Error(`${file.name}: ${errorMessage(err)}`);
+  }
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
@@ -657,6 +734,9 @@ function frame(now: number): void {
   const dt = Math.min(0.05, (now - lastTime) / 1000);
   lastTime = now;
   const time = now / 1000;
+  requestAnimationFrame(frame);
+  // Nothing to draw until a level has been chosen.
+  if (!level) return;
 
   if (ball.moving) {
     const event = ball.update(dt);
@@ -685,8 +765,7 @@ function frame(now: number): void {
   updateAimVisuals(time);
   updateHud();
   renderer.render(scene, camera);
-  requestAnimationFrame(frame);
 }
 
-startHole();
+fillLevelList();
 requestAnimationFrame(frame);
